@@ -45,10 +45,10 @@ Guillermo Alajeos, Adrián Castelló, Héctor Martínez, Pedro Alonso-Jordá, Fr
 J. Supercomputing 79, 8124–8147 (2023). 
 https://doi.org/10.1007/s11227-022-05003-3
 
-AlgorithmXXX: Automatic Generators for a Family of Matrix Multiplication Routines with Apache TVM 
+AlgorithmXXX: Automatic Generators for a Family of Matrix Multiplication Routines with Apache TVM. 
 Guillermo Alajeos, Adrián Castelló, Francisco D. Igual, Héctor Martínez, Enrique S. Quintana-Ortí.
 ACM Transactions on Mathematical Software, 2024. To appear.
-arXiv:2310.20347v1, 2023
+arXiv:2310.20347v1, 2023. https://arxiv.org/pdf/2310.20347.pdf
 
 ## Funding
 This work was supported by the research project PID2020-113656RB-C22 of MCIN/AEI/10.13039/501100011033. 
