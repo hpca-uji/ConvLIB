@@ -1,13 +1,13 @@
 # ConvLIB
-ConvLib is a library of multi-threaded routines for convolution operators on multicore processors with ARM (NEON) and RISC-V architecture. Two major features of ConvLIB, which makes it different from other packages is that the routines in the library self-adapt to the cache hierarchy and hardware-specific micro-kernels are generated automatically.
+ConvLib is a library of multi-threaded routines that offers a collection of efficient parallel convolution operators for multicore processors with ARM (NEON) or RISC-V architecture. Two major features of ConvLIB, which makes it different from other packages, is that 1) the routines in the library self-adapt to the cache hierarchy via an analytical model and 2) hardware-specific micro-kernels are generated automatically.
 
 ## Requisites
-- OpenMP if a parallel execution is required.
+OpenMP if a parallel execution is required.
 
 ## Supported Hardware
+Any processor with ARM NEON or RISC-V RVV 1.0 architecture. Tested on: 
 - ARM A57, A78AE, CARMEL
 - RISC-V Xuantie C906, C910
-- Any other processor with ARM NEON or RISC-V RVV 1.0 architecture.
 
 ## How to install
 1. Modify the `Makefile.inc` file for configuring the installation.
@@ -35,7 +35,6 @@ Adding a new CNN model is as easy as adding a new file to the `cnn` folder follo
 ## How to cite
 Parallel GEMM-based Convolutions for Deep Learning on Multicore ARM and RISC-V Architectures.
 Héctor Martínez, Sandra Catalán, Adrián Castelló, and Enrique S. Quintana-Ortí. 
-Parallel GEMM-Based Convolutions for Deep Learning on Multicore Arm and Risc-V Architectures. 
 J. of Systems Architecture, 2023. Under review.
 Available at SSRN: https://ssrn.com/abstract=4676008 or http://dx.doi.org/10.2139/ssrn.4676008
 
