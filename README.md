@@ -33,4 +33,26 @@ Adding a new CNN model is as easy as adding a new file to the `cnn` folder follo
 2. Add a new file in the `SIMD-arch` folder following the `SIMD-TEMPLATE` file.
 
 ## How to cite
-Pending
+Parallel GEMM-based Convolutions for Deep Learning on Multicore ARM and RISC-V Architectures.
+Héctor Martínez, Sandra Catalán, Adrián Castelló, and Enrique S. Quintana-Ortí. 
+Parallel GEMM-Based Convolutions for Deep Learning on Multicore Arm and Risc-V Architectures. 
+J. of Systems Architecture, 2023. Under review.
+Available at SSRN: https://ssrn.com/abstract=4676008 or http://dx.doi.org/10.2139/ssrn.4676008
+
+## Related work
+Micro-kernels for portable and efficient matrix multiplication in deep learning. 
+Guillermo Alajeos, Adrián Castelló, Héctor Martínez, Pedro Alonso-Jordá, Francisco D. Igual, Enrique S. Quintana-Ortí.
+J. Supercomputing 79, 8124–8147 (2023). 
+https://doi.org/10.1007/s11227-022-05003-3
+
+AlgorithmXXX: Automatic Generators for a Family of Matrix Multiplication Routines with Apache TVM 
+Guillermo Alajeos, Adrián Castelló, Francisco D. Igual, Héctor Martínez, Enrique S. Quintana-Ortí.
+ACM Transactions on Mathematical Software, 2024. To appear.
+arXiv:2310.20347v1, 2023
+
+## Funding
+This work was supported by the research project PID2020-113656RB-C22 of MCIN/AEI/10.13039/501100011033. 
+The project has also received funding from the European High-Performance
+Computing Joint Undertaking (JU) under grant agreement No 955558 (eFlows4HPC project). The
+JU receives support from the European Union’s Horizon 2020 research and innovation programme,
+and Spain, Germany, France, Italy, Poland, Switzerland, and Norway.
