@@ -4,7 +4,8 @@ include Makefile.inc
 #------------------------------------------
 #| COMPILERS                              |
 #------------------------------------------
-OPTFLAGS=
+FLAGS=-O3 -DCHECK -DARMV8 -DFP32
+
 ifneq ($(MAKECMDGOALS),clean)
     ifeq ($(arch), riscv)
         CC       = riscv64-unknown-linux-gnu-gcc
@@ -14,7 +15,11 @@ ifneq ($(MAKECMDGOALS),clean)
     else ifeq ($(arch), armv8)
         CC       = gcc
         CLINKER  = gcc
-        OPTFLAGS = -march=armv8-a -O3 -DCHECK -DARMV8 -DFP32
+        ifeq ($(FP16_ENABLE), T)
+            OPTFLAGS = -march=armv8.2-a+fp16 $(FLAGS)
+	else
+            OPTFLAGS = -march=armv8-a $(FLAGS)
+        endif
     else
         $(error Architecture unsuported. Please use arch=[riscv|armv8])
     endif
@@ -50,9 +55,20 @@ else
 endif
 #------------------------------------------
 
+OBJ_FILES = $(OBJDIR)/model_level.o $(OBJDIR)/selector_ukernel.o $(OBJDIR)/gemm_ukernel.o
+
 SRC_ASM_FILES = $(wildcard ./src/asm_generator/ukernels/*.S)
 OBJ_ASM_FILES = $(patsubst ./src/asm_generator/ukernels/%.S, $(OBJDIR)/%.o, $(SRC_ASM_FILES))
 OBJ_FILES += $(OBJ_ASM_FILES)
+
+ifeq ($(arch), armv8)
+    ifeq ($(FP16_ENABLE), T)
+        OBJ_FILES += $(OBJDIR)/uKernels_intrinsic_fp16.o
+    endif
+    OBJ_FILES += $(OBJDIR)/uKernels_intrinsic_fp32.o
+    OBJ_FILES += $(OBJDIR)/uKernels_intrinsic_int8_int16.o 
+    OBJ_FILES += $(OBJDIR)/uKernels_intrinsic_int8_int32.o
+endif
 
 SRC_CONV_FILES = $(wildcard ./src/*.c)
 OBJ_CONV_FILES = $(patsubst ./src/%.c, $(OBJDIR)/%.o, $(SRC_CONV_FILES))
@@ -73,7 +89,8 @@ else
 
 endif
  
-OBJ_FILES  = $(OBJDIR)/model_level.o $(OBJDIR)/selector_ukernel.o $(OBJDIR)/gemm_ukernel.o $(OBJ_CONV_FILES) $(OBJ_ASM_FILES) $(OBJ_GEMM_FILES) $(OBJ_CONVGEMM_FILES) $(OBJ_WINOGRAD_FILES)
+OBJ_FILES  += $(OBJ_CONV_FILES) $(OBJ_GEMM_FILES) $(OBJ_CONVGEMM_FILES) $(OBJ_WINOGRAD_FILES) 
+
 OPTFLAGS  += -D$(WINOGRAD)
 
 all: $(OBJDIR)/$(BIN)
@@ -85,6 +102,9 @@ $(OBJDIR)/%.o: ./src/%.c
 	$(CC) $(CFLAGS) $(OPTFLAGS) -c -o $@ $< $(INCLUDE) $(LIBS)
 
 $(OBJDIR)/%.o: ./src/gemm/%.c
+	$(CC) $(CFLAGS) $(OPTFLAGS) -c -o $@ $< $(INCLUDE) $(LIBS)
+
+$(OBJDIR)/%.o: ./src/intrinsic_generator/ukernels/%.c
 	$(CC) $(CFLAGS) $(OPTFLAGS) -c -o $@ $< $(INCLUDE) $(LIBS)
 
 $(OBJDIR)/%.o: ./src/convGemm/%.c

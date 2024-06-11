@@ -2,8 +2,18 @@
 #Compilation Options. Possible values [T | F]
 #  [*] T: True and F: False
 #----------------------------------------------------------
-OPENBLAS_ENABLE = F
-BLIS_ENABLE     = F
+OPENBLAS_ENABLE = T
+BLIS_ENABLE     = T
+FP16_ENABLE     = T
+#----------------------------------------------------------
+
+
+#----------------------------------------------------------
+#Convolution Data Type. Options Availables:
+#  [*] FP32
+#  [*] INT8_INT32
+#----------------------------------------------------------
+DTYPE = FP32
 #----------------------------------------------------------
 
 

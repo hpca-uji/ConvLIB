@@ -140,7 +140,7 @@ if __name__ == "__main__":
     msg = ""
     print ("\n")
     print ("+============================================================+")
-    print ("|                  MICRO-KERNELS GENERATOR                   |")
+    print ("|                ASM MICRO-KERNELS GENERATOR                 |")
     print ("+============================================================+")
     print ("|    [*] ASM Architecture               | %-18s |" % (arch))
     if unroll == 0:
@@ -169,17 +169,15 @@ if __name__ == "__main__":
             msg = "Enable" 
         else: msg = "Disable"
         print ("|    [*] Broadcast                      | %-18s |" % (msg))
-    print ("+=======================================+====================+")
-
-    print ("")
-    print ("+=================================================+=====+====+")
-    print ("|               MICRO-KERNELS GENERATED           |  MR | NR |")
-    print ("+=================================================+=====+====+")
+    print ("+=======================================+==========+=========+")
+    print ("|        MICRO-KERNELS GENERATED        |    MR    |    NR   |")
+    print ("+=======================================+==========+=========+")
     
     nr_lim = maxvec
     if arch == "riscv":
         nr_lim=10
 
+    nmicro = 1
     for mr in range(4, maxvec, 4):
         for nr in range(4, nr_lim, 4):
             MR = mr
@@ -198,7 +196,8 @@ if __name__ == "__main__":
                 asm.generate_umicro()
                 cm.generate_edge_function(asm)
                 cm.generate_selector_function(asm)
-                print(f"|    [*] Micro-kernel                             | %s%-3d%s | %s%-3d%s|" % (bcolor.OKCYAN, MR, bcolor.ENDC, bcolor.OKCYAN, NR, bcolor.ENDC))
+                print(f"|    [%2d] Micro-kernel                  | %s%-8d%s | %s%-8d%s|" % (nmicro, bcolor.OKCYAN, MR, bcolor.ENDC, bcolor.OKCYAN, NR, bcolor.ENDC))
+                nmicro += 1
                 #----------------------------------------------------------------
     cm.generate_selector_function(asm, close=True)
     print ("+=================================================+=====+====+\n")
