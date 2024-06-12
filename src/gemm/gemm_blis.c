@@ -32,28 +32,33 @@
 #include "gemm_blis.h"
 
 
-int print_matrix(char *, char, size_t, int, DTYPE *, size_t);
+void gemm_base_Cresident( char orderC, int m, int n, int k, C_TYPE alpha, 
+		          AB_TYPE *A, int ldA, AB_TYPE *B, int ldB, 
+			  C_TYPE beta, C_TYPE *C, int ldC );
 
-//----------------------------------------------------------
-//Loop jr (L4) Parallelization
-//----------------------------------------------------------
 void gemm_blis_B3A2C0( char orderA, char orderB, char orderC,
-                       char transA, char transB, 
-                       size_t m, size_t n, size_t k, 
-                       DTYPE alpha, DTYPE *A, size_t ldA, 
-		                    DTYPE *B, size_t ldB, 
-		       DTYPE beta,  DTYPE *C, size_t ldC, 
-		       DTYPE *Ac, DTYPE *Bc, 
-                       size_t MC, size_t NC, size_t KC, 
-		       int MR, int NR, int TH, int loop, DTYPE *Ctmp,
-		       ukernel_asm ukr, ukernel_edge ukr_edge) {
+                       char transA, char transB, size_t m, size_t n, size_t k, 
+                       C_TYPE alpha, AB_TYPE *A, size_t ldA, AB_TYPE *B, 
+		       size_t ldB, C_TYPE beta, C_TYPE *C, size_t ldC, 
+		       AB_TYPE *Ac, AB_TYPE *Bc, size_t MC, size_t NC, size_t KC, 
+		       int MR, int NR, int TH, int loop, C_TYPE *Ctmp, 
+		       UK_TYPE *uk_vec, UK_EDGE_TYPE *uk_edge_vec) {
 
-  int    ic, jc, pc, mc, nc, kc, ir, jr, mr, nr, j, i; 
-  DTYPE  zero = 0.0, one = 1.0, betaI; 
-  DTYPE  *Aptr, *Bptr, *Cptr;
-  float  beta_edge = 0.0;
+  int ic, jc, pc, mc, nc, kc, ir, jr, mr, nr, j, i, th, th_id; 
+  C_TYPE  zero = 0.0, one = 1.0, beta_edge = 0.0, betaI, *Ctmp_th, *Cptr; 
+  AB_TYPE *Aptr, *Bptr, *Acptr;
 
-  DTYPE *Ctmp_th;
+  UK_TYPE uk;
+  UK_EDGE_TYPE uk_edge;
+
+  #ifdef FP32
+    uk_asm_selector_fp32(MR, NR, uk_vec, &uk);
+    uk_asm_edge_selector_fp32(MR, NR, uk_edge_vec, &uk_edge);
+  #elif INT8_INT32
+    uk_intrinsic_selector_int8_int32(MR, NR, uk_vec, &uk);
+    uk_edge = uk;
+  #endif
+
 
   #if defined(CHECK)
   #include "check_params.h"
@@ -88,10 +93,8 @@ void gemm_blis_B3A2C0( char orderA, char orderB, char orderC,
               mr = min(mc-ir, MR); 
               Cptr = &Ccol(ic+ir,jc+jr);
 	      
-  	      if (mr == MR && nr == NR)
-                ukr(kc, &alpha, &Ac[ir*kc], &Bc[jr*kc], &betaI, Cptr, ldC * sizeof(float));
-              else
-	        ukr_edge(mr, nr, MR, NR, kc, &alpha, &Ac[ir*kc], &Bc[jr*kc], &betaI, Ctmp, Cptr, ldC);
+	      generic_microkernel(mr, nr, MR, NR, &Ac[ir*kc], &Bc[jr*kc], 
+                                  Cptr, kc, ldC, alpha, betaI, Ctmp, uk, uk_edge);
 
             }
           }
@@ -101,8 +104,6 @@ void gemm_blis_B3A2C0( char orderA, char orderB, char orderC,
     }
   
   } else {
-    int th_id;
-    DTYPE *Acptr;
 
     #ifdef OMP_ENABLE
     #pragma omp parallel num_threads(TH) private(jc, nc, pc, kc, Bptr, ic, mc, Aptr, Acptr, Cptr, Ctmp_th, jr, nr, ir, mr, th_id)
@@ -114,7 +115,7 @@ void gemm_blis_B3A2C0( char orderA, char orderB, char orderC,
     #endif
 
     if(loop == 3) {
-    //=========================================== LOOP 3 PARALLELIZATION =======================================//
+    //== LOOP 3 PARALLELIZATION ==//
     for ( jc=0; jc<n; jc+=NC ) {
       nc = min(n-jc, NC);
       int its_nc = (int) ceil((double)nc/NR/omp_get_num_threads());
@@ -146,12 +147,9 @@ void gemm_blis_B3A2C0( char orderA, char orderB, char orderC,
               mr = min(mc-ir, MR);
               Cptr = &Ccol(ic+ir,jc+jr);
 
-  	      if (mr == MR && nr == NR)
-                ukr(kc, &alpha, &Acptr[ir*kc], &Bc[jr*kc], &betaI, Cptr, ldC * sizeof(float));
-              else {
-	        Ctmp_th = &Ctmp[th_id * MR * NR];
-	        ukr_edge(mr, nr, MR, NR, kc, &alpha, &Acptr[ir*kc], &Bc[jr*kc], &betaI, Ctmp_th, Cptr, ldC);
-	      }
+	      generic_microkernel(mr, nr, MR, NR, &Acptr[ir*kc], &Bc[jr*kc], 
+                                  Cptr, kc, ldC, alpha, betaI, &Ctmp[th_id * MR * NR], uk, uk_edge);
+
 	    }
           }
         }
@@ -163,7 +161,7 @@ void gemm_blis_B3A2C0( char orderA, char orderB, char orderC,
     
     } else if(loop == 4) {
 
-    //=========================================== LOOP 4 PARALLELIZATION =======================================//
+    //== LOOP 4 PARALLELIZATION ==//
     for ( jc=0; jc<n; jc+=NC ) {
       nc = min(n-jc, NC); 
       int its_nc = (int) ceil((double)nc/NR/TH);
@@ -195,12 +193,8 @@ void gemm_blis_B3A2C0( char orderA, char orderB, char orderC,
               mr = min(mc-ir, MR); 
               Cptr = &Ccol(ic+ir,jc+jr);
 
-  	      if (mr == MR && nr == NR)
-                ukr(kc, &alpha, &Ac[ir*kc], &Bc[jr*kc], &betaI, Cptr, ldC * sizeof(float));
-              else {
-	        Ctmp_th = &Ctmp[th_id * MR * NR];
-	        ukr_edge(mr, nr, MR, NR, kc, &alpha, &Ac[ir*kc], &Bc[jr*kc], &betaI, Ctmp_th, Cptr, ldC);
-	      }
+	      generic_microkernel(mr, nr, MR, NR, &Ac[ir*kc], &Bc[jr*kc], 
+                                  Cptr, kc, ldC, alpha, betaI, &Ctmp[th_id * MR * NR], uk, uk_edge);
 
             }
           }
@@ -213,7 +207,7 @@ void gemm_blis_B3A2C0( char orderA, char orderB, char orderC,
     
     } else if(loop == 5) {
      
-    //=========================================== LOOP 5 PARALLELIZATION =======================================//
+    //== LOOP 5 PARALLELIZATION ==//
     for ( jc=0; jc<n; jc+=NC ) {
       nc = min(n-jc, NC); 
       int its_nc = (int) ceil((double)nc/NR/TH);
@@ -246,12 +240,8 @@ void gemm_blis_B3A2C0( char orderA, char orderB, char orderC,
               mr = min(mc-ir, MR); 
               Cptr = &Ccol(ic+ir,jc+jr);
 
-  	      if (mr == MR && nr == NR)
-                ukr(kc, &alpha, &Ac[ir*kc], &Bc[jr*kc], &betaI, Cptr, ldC * sizeof(float));
-              else {
-	        Ctmp_th = &Ctmp[th_id * MR * NR];
-	        ukr_edge(mr, nr, MR, NR, kc, &alpha, &Ac[ir*kc], &Bc[jr*kc], &betaI, Ctmp_th, Cptr, ldC);
-	      }
+	      generic_microkernel(mr, nr, MR, NR, &Ac[ir*kc], &Bc[jr*kc], 
+                                  Cptr, kc, ldC, alpha, betaI, &Ctmp[th_id * MR * NR], uk, uk_edge);
 
             }
           }
@@ -261,7 +251,6 @@ void gemm_blis_B3A2C0( char orderA, char orderB, char orderC,
         }
       }
     }
-    //==========================================================================================================//
     }
 
     #ifdef OMP_ENABLE
@@ -270,21 +259,28 @@ void gemm_blis_B3A2C0( char orderA, char orderB, char orderC,
   }
 }
 
-void gemm_blis_A3B2C0( char orderA, char orderB, char orderC,
-                       char transA, char transB, 
-                       size_t m, size_t n, size_t k, 
-                       DTYPE alpha, DTYPE *A, size_t ldA, 
-		                    DTYPE *B, size_t ldB, 
-		       DTYPE beta,  DTYPE *C, size_t ldC, 
-		       DTYPE *Ac, DTYPE *Bc, 
-                       size_t MC, size_t NC, size_t KC, 
-		       int MR, int NR, int TH, int loop, DTYPE *Ctmp,
-		       ukernel_asm ukr, ukernel_edge ukr_edge) {
+void gemm_blis_A3B2C0( char orderA, char orderB, char orderC, 
+		       char transA, char transB, size_t m, size_t n, size_t k, 
+		       C_TYPE alpha, AB_TYPE *A, size_t ldA, AB_TYPE *B, size_t ldB, 
+		       C_TYPE beta, C_TYPE *C, size_t ldC, AB_TYPE *Ac, AB_TYPE *Bc, 
+                       size_t MC, size_t NC, size_t KC, int MR, int NR, int TH, 
+		       int loop, C_TYPE *Ctmp, UK_TYPE *uk_vec, UK_EDGE_TYPE *uk_edge_vec) {
 
-  int    ic, jc, pc, mc, nc, kc, ir, jr, mr, nr;
-  DTYPE  zero = 0.0, one = 1.0, betaI;
-  DTYPE  *Aptr, *Bptr, *Cptr, *Bcptr;
-  DTYPE *Ctmp_th;
+  int ic, jc, pc, mc, nc, kc, ir, jr, mr, nr, j, i, th, th_id; 
+  C_TYPE  zero = 0.0, one = 1.0, beta_edge = 0.0, betaI, *Ctmp_th, *Cptr; 
+  AB_TYPE *Aptr, *Bptr, *Bcptr;
+
+  UK_TYPE uk;
+  UK_EDGE_TYPE uk_edge;
+
+  #ifdef FP32
+    uk_asm_selector_fp32(MR, NR, uk_vec, &uk);
+    uk_asm_edge_selector_fp32(MR, NR, uk_edge_vec, &uk_edge);
+  #elif INT8_INT32
+    uk_intrinsic_selector_int8_int32(MR, NR, uk_vec, &uk);
+    uk_edge = uk;
+  #endif
+
 
   #if defined(CHECK)
   #include "check_params.h"
@@ -321,10 +317,8 @@ void gemm_blis_A3B2C0( char orderA, char orderB, char orderC,
               nr = min(nc-jr, NR);
               Cptr = &Ccol(ic+ir,jc+jr);
 	      
-  	      if (mr == MR && nr == NR)
-                ukr(kc, &alpha, &Ac[ir*kc], &Bc[jr*kc], &betaI, Cptr, ldC * sizeof(float));
-              else
-	        ukr_edge(mr, nr, MR, NR, kc, &alpha, &Ac[ir*kc], &Bc[jr*kc], &betaI, Ctmp, Cptr, ldC);
+	      generic_microkernel(mr, nr, MR, NR, &Ac[ir*kc], &Bc[jr*kc], 
+                                  Cptr, kc, ldC, alpha, betaI, Ctmp, uk, uk_edge);
 
 	    }
           }
@@ -332,7 +326,6 @@ void gemm_blis_A3B2C0( char orderA, char orderB, char orderC,
       }
     }
   } else {
-    int th_id; 
     #ifdef OMP_ENABLE
     #pragma omp parallel num_threads(TH) private(jc, nc, pc, kc, Bptr, Bcptr, ic, mc, Aptr, Cptr, Ctmp_th, jr, nr, ir, mr, th_id)
     {
@@ -343,7 +336,7 @@ void gemm_blis_A3B2C0( char orderA, char orderB, char orderC,
     #endif
     
     if(loop == 3) {
-    //=========================================== LOOP 3 PARALLELIZATION =======================================//
+    //== LOOP 3 PARALLELIZATION ==//
     for ( ic=0; ic<m; ic+=MC ) {
       mc = min(m-ic, MC);
       int its_mc = (int) ceil((double)mc/MR/omp_get_num_threads());
@@ -377,12 +370,8 @@ void gemm_blis_A3B2C0( char orderA, char orderB, char orderC,
               nr = min(nc-jr, NR);
               Cptr = &Ccol(ic+ir,jc+jr);
 
-  	      if (mr == MR && nr == NR)
-                ukr(kc, &alpha, &Ac[ir*kc], &Bcptr[jr*kc], &betaI, Cptr, ldC * sizeof(float));
-              else {
-	        Ctmp_th = &Ctmp[th_id * MR * NR];
-	        ukr_edge(mr, nr, MR, NR, kc, &alpha, &Ac[ir*kc], &Bcptr[jr*kc], &betaI, Ctmp_th, Cptr, ldC);
-	      }
+	      generic_microkernel(mr, nr, MR, NR, &Ac[ir*kc], &Bcptr[jr*kc], 
+                                  Cptr, kc, ldC, alpha, betaI, &Ctmp[th_id * MR * NR], uk, uk_edge);
 
             }
           }
@@ -394,8 +383,7 @@ void gemm_blis_A3B2C0( char orderA, char orderB, char orderC,
     }
     
     } else if(loop == 4) {
-    
-    //=========================================== LOOP 4 PARALLELIZATION =======================================//
+    //== LOOP 4 PARALLELIZATION ==//
     for ( ic=0; ic<m; ic+=MC ) {
       mc = min(m-ic, MC);
       int its_mc = (int) ceil((double)mc/MR/omp_get_num_threads());
@@ -428,12 +416,8 @@ void gemm_blis_A3B2C0( char orderA, char orderB, char orderC,
               nr = min(nc-jr, NR);
               Cptr = &Ccol(ic+ir,jc+jr);
 
-  	      if (mr == MR && nr == NR)
-                ukr(kc, &alpha, &Ac[ir*kc], &Bc[jr*kc], &betaI, Cptr, ldC * sizeof(float));
-              else {
-	        Ctmp_th = &Ctmp[th_id * MR * NR];
-	        ukr_edge(mr, nr, MR, NR, kc, &alpha, &Ac[ir*kc], &Bc[jr*kc], &betaI, Ctmp_th, Cptr, ldC);
-	      }
+	      generic_microkernel(mr, nr, MR, NR, &Ac[ir*kc], &Bc[jr*kc], 
+                                  Cptr, kc, ldC, alpha, betaI, &Ctmp[th_id * MR * NR], uk, uk_edge);
 
             }
           }
@@ -445,8 +429,7 @@ void gemm_blis_A3B2C0( char orderA, char orderB, char orderC,
     }
 
     } else if(loop == 5) {
-    
-    //=========================================== LOOP 5 PARALLELIZATION =======================================//
+    //== LOOP 5 PARALLELIZATION ==//
     for ( ic=0; ic<m; ic+=MC ) {
       mc = min(m-ic, MC);
       int its_mc = (int) ceil((double)mc/MR/omp_get_num_threads());
@@ -479,13 +462,8 @@ void gemm_blis_A3B2C0( char orderA, char orderB, char orderC,
               nr = min(nc-jr, NR);
               Cptr = &Ccol(ic+ir,jc+jr);
 
-  	      if (mr == MR && nr == NR)
-                ukr(kc, &alpha, &Ac[ir*kc], &Bc[jr*kc], &betaI, Cptr, ldC * sizeof(float));
-              else {
-	        Ctmp_th = &Ctmp[th_id * MR * NR];
-	        ukr_edge(mr, nr, MR, NR, kc, &alpha, &Ac[ir*kc], &Bc[jr*kc], &betaI, Ctmp_th, Cptr, ldC);
-	      }
-
+	      generic_microkernel(mr, nr, MR, NR, &Ac[ir*kc], &Bc[jr*kc], 
+                                  Cptr, kc, ldC, alpha, betaI, &Ctmp[th_id * MR * NR], uk, uk_edge);
             }
           }
         #ifdef OMP_ENABLE
@@ -505,10 +483,9 @@ void gemm_blis_A3B2C0( char orderA, char orderB, char orderC,
 }
 
 
-void pack_RB( char orderM, char transM, int mc, int nc, DTYPE *M, int ldM, DTYPE *Mc, int RR ){
-/*
-  BLIS pack for M-->Mc
-*/
+void pack_RB( char orderM, char transM, int mc, int nc, 
+	      AB_TYPE *M, int ldM, AB_TYPE *Mc, int RR ){
+  //BLIS pack for M-->Mc
   int    i, j, ii, k, rr;
   for ( i=0; i<mc; i+=RR ) { 
     k = i*nc;
@@ -523,10 +500,9 @@ void pack_RB( char orderM, char transM, int mc, int nc, DTYPE *M, int ldM, DTYPE
     }
 }
 
-void pack_CB( char orderM, char transM, int mc, int nc, DTYPE *M, int ldM, DTYPE *Mc, int RR ){
-/*
-  BLIS pack for M-->Mc
-*/
+void pack_CB( char orderM, char transM, int mc, int nc, 
+              AB_TYPE *M, int ldM, AB_TYPE *Mc, int RR ) {
+  //BLIS pack for M-->Mc
   int    i, j, jj, k, nr;
   for ( j=0; j<nc; j+=RR ) { 
     k = j*mc;
@@ -543,16 +519,15 @@ void pack_CB( char orderM, char transM, int mc, int nc, DTYPE *M, int ldM, DTYPE
 }
 
 
-void gemm_base_Cresident( char orderC, int m, int n, int k, 
-                          DTYPE alpha, DTYPE *A, int ldA, 
-                                       DTYPE *B, int ldB, 
-                          DTYPE beta,  DTYPE *C, int ldC ){
+void gemm_base_Cresident( char orderC, int m, int n, int k, C_TYPE alpha, 
+		          AB_TYPE *A, int ldA, AB_TYPE *B, int ldB, 
+			  C_TYPE beta, C_TYPE *C, int ldC ){
 /*
   Baseline micro-kernel 
   Replace with specialized micro-kernel where C-->m x n is resident in registers
 */
   int    i, j, p;
-  DTYPE  zero = 0.0, tmp;
+  C_TYPE  zero = 0.0, tmp;
 
   for ( j=0; j<n; j++ )
     for ( i=0; i<m; i++ ) {

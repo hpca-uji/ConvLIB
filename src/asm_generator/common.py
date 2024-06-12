@@ -111,11 +111,15 @@ def add_header(MR, NR, edge=False):
             fdout = open(file_name, "a")
     else:
         fdout = open(file_name, "w")
-        fdout.write(f"typedef void (*ukernel_asm)(size_t , float *, float *, float *, float *, float *, size_t );\n\n")
-        fdout.write(f"typedef void (*ukernel_edge)(size_t mr, size_t nr, size_t _MR, size_t _NR, size_t kc, float *alpha, \n\
+        fdout.write(f"typedef void (*uk_asm_fp32)(size_t , float *, float *, float *, float *, float *, size_t );\n\n")
+        fdout.write(f"typedef void (*uk_asm_edge_fp32)(size_t mr, size_t nr, size_t _MR, size_t _NR, size_t kc, float *alpha, \n\
                             float *a, float *b, float *beta, float *ctmp, \n\
                             float *C, size_t ldC);\n\n")
-        fdout.write(f"void ukernels_selector(int MR, int NR, ukernel_asm *ukr, ukernel_edge *ukr_edge);\n\n")
+
+        fdout.write(f"uk_asm_fp32 *new_uk_asm_selector_fp32();\n\n")
+        fdout.write(f"uk_asm_edge_fp32 *new_uk_asm_edge_selector_fp32();\n\n")
+        fdout.write(f"void uk_asm_selector_fp32(int mr, int nr, uk_asm_fp32 *uk_vec, uk_asm_fp32 *ukr);\n\n")
+        fdout.write(f"void uk_asm_edge_selector_fp32(int mr, int nr, uk_asm_edge_fp32 *uk_vec, uk_asm_edge_fp32 *ukr);\n\n")
 
     if add_header:
         if not edge:
@@ -128,6 +132,46 @@ def add_header(MR, NR, edge=False):
 
     fdout.close()
 
+def generate_selector(micros, maxMR, maxNR):
+    name_path = os.path.dirname(__file__) + "/" + u_folder
+    file_name = name_path + "/" + selector_name
+    
+    fdout = open(file_name, "w")
+
+    gen  =  "\n"
+    gen += "#include <stdio.h>\n"
+    gen += "#include <stdlib.h>\n"
+    gen += "\n#include \"" + h_name + "\"\n\n"
+
+    gen += f"uk_asm_fp32 *new_uk_asm_selector_fp32() {{ \n"
+    gen += f"  uk_asm_fp32 *uk_vec = (uk_asm_fp32 *)malloc(sizeof(uk_asm_fp32) * {maxMR} * {maxNR});\n"
+    for mr, nr in micros:
+        gen += f"  uk_vec[{nr}*{maxMR} + {mr}] = gemm_ukernel_asm_{mr}x{nr};\n"
+    gen +=  "  return uk_vec;\n"
+    gen +=  "}\n\n"
+    
+    gen += f"uk_asm_edge_fp32 *new_uk_asm_edge_selector_fp32() {{ \n"
+    gen += f"  uk_asm_edge_fp32 *uk_vec = (uk_asm_edge_fp32 *)malloc(sizeof(uk_asm_edge_fp32) * {maxMR} * {maxNR});\n"
+    for mr, nr in micros:
+        gen += f"  uk_vec[{nr}*{maxMR} + {mr}] = gemm_ukernel_edge_{mr}x{nr};\n"
+    gen +=  "  return uk_vec;\n"
+    gen +=  "}\n\n"
+
+    gen += f"void uk_asm_selector_fp32(int mr, int nr, uk_asm_fp32 *uk_vec, uk_asm_fp32 *ukr) {{\n"
+    gen += f"  (*ukr) = uk_vec[nr*{maxMR} + mr];\n"
+    gen +=  "}\n\n"
+
+    gen += f"void uk_asm_edge_selector_fp32(int mr, int nr, uk_asm_edge_fp32 *uk_vec, uk_asm_edge_fp32 *ukr) {{\n"
+    gen += f"  (*ukr) = uk_vec[nr*{maxMR} + mr];\n"
+    gen +=  "}\n\n"
+
+    fdout.write(gen)
+    fdout.close()
+
+    return True
+
+
+'''
 def generate_selector_function(asm, close=False):
     #Micro-Kernel Output Files
     name_path = os.path.dirname(__file__) + "/" + u_folder
@@ -146,6 +190,7 @@ def generate_selector_function(asm, close=False):
         fdout.write("    (*ukr_edge) = NULL;\n")
         fdout.write("  }\n")
         fdout.write("}\n")
+
         fdout.close()
         return
 
@@ -180,7 +225,7 @@ def generate_selector_function(asm, close=False):
         fdout.write("    (*ukr_edge) = &gemm_ukernel_edge_%dx%d;\n" % (MR, NR))
 
     fdout.close()
-
+'''
 
 def clear_path():
     name_path = os.path.dirname(__file__) + "/" + u_folder + "/"

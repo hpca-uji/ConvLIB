@@ -48,7 +48,7 @@ def micro_kernel_int8_int32_generator(arch, MR, NR, lane, dtype, vlen, macros, c
         hfile.write(f"\ntypedef void (*uk_intrinsic_{dtype})(int, int8_t *, int8_t *, int32_t *, int32_t, int);\n")
         hfile.write(f"\nuk_intrinsic_{dtype} *new_uk_intrinsic_selector_{dtype}();\n")
         hfile.write(f"\nvoid uk_intrinsic_selector_{dtype}(int mr, int nr, uk_intrinsic_{dtype} *uk_vec, uk_intrinsic_{dtype} *ukr);\n")
-        hfile.write(f"\nvoid ukernel_intrinsic_{MR}x{NR}_{dtype}(int kc, int8_t  *Ar, int8_t *Br, int32_t *Cr, int32_t beta, int Clda);\n")
+        #hfile.write(f"\nvoid ukernel_intrinsic_{MR}x{NR}_{dtype}(int kc, int8_t  *Ar, int8_t *Br, int32_t *Cr, int32_t beta, int Clda);\n")
 
     #--------------------------------------
     # Micro-kernel implementation
@@ -177,7 +177,7 @@ def micro_kernel_int8_int16_generator(arch, MR, NR, lane, dtype, vlen, macros, c
         hfile.write(f"\ntypedef void (*uk_intrinsic_{dtype})(int, int8_t *, int8_t *, int16_t *, int16_t, int);\n")
         hfile.write(f"\nuk_intrinsic_{dtype} *new_uk_intrinsic_selector_{dtype}();\n")
         hfile.write(f"\nvoid uk_intrinsic_selector_{dtype}(int mr, int nr, uk_intrinsic_{dtype} *uk_vec, uk_intrinsic_{dtype} *ukr);\n")
-        hfile.write(f"\nvoid ukernel_intrinsic_{MR}x{NR}_{dtype}(int kc, int8_t  *Ar, int8_t *Br, int16_t *Cr, int16_t beta, int Clda);\n")
+        #hfile.write(f"\nvoid ukernel_intrinsic_{MR}x{NR}_{dtype}(int kc, int8_t  *Ar, int8_t *Br, int16_t *Cr, int16_t beta, int Clda);\n")
 
     #--------------------------------------
     # Micro-kernel implementation
@@ -287,7 +287,7 @@ def micro_kernel_fp32_generator(arch, MR, NR, lane, dtype, vlen, macros, cfile, 
         hfile.write(f"\ntypedef void (*uk_intrinsic_{dtype})(int, float *, float *, float *, float, int );\n")
         hfile.write(f"\nuk_intrinsic_{dtype} *new_uk_intrinsic_selector_{dtype}();\n")
         hfile.write(f"\nvoid uk_intrinsic_selector_{dtype}(int mr, int nr, uk_intrinsic_{dtype} *uk_vec, uk_intrinsic_{dtype} *ukr);\n")
-        hfile.write(f"\nvoid ukernel_intrinsic_{MR}x{NR}_{dtype}(int kc, float  *Ar, float *Br, float *Cr, float beta, int Clda);\n") 
+        #hfile.write(f"\nvoid ukernel_intrinsic_{MR}x{NR}_{dtype}(int kc, float  *Ar, float *Br, float *Cr, float beta, int Clda);\n") 
 
     #--------------------------------------
     # Micro-kernel implementation
@@ -376,7 +376,7 @@ def micro_kernel_fp16_generator(arch, MR, NR, lane, dtype, vlen, macros, cfile, 
         hfile.write(f"\ntypedef void (*uk_intrinsic_{dtype})(int, float16_t *, float16_t *, float16_t *, float16_t, int );\n")
         hfile.write(f"\nuk_intrinsic_{dtype} *new_uk_intrinsic_selector_{dtype}();\n")
         hfile.write(f"\nvoid uk_intrinsic_selector_{dtype}(int mr, int nr, uk_intrinsic_{dtype} *uk_vec, uk_intrinsic_{dtype} *ukr);\n")
-        hfile.write(f"\nvoid ukernel_intrinsic_{MR}x{NR}_{dtype}(int kc, float16_t  *Ar, float16_t *Br, float16_t *Cr, float16_t beta, int Clda);\n") 
+        #hfile.write(f"\nvoid ukernel_intrinsic_{MR}x{NR}_{dtype}(int kc, float16_t  *Ar, float16_t *Br, float16_t *Cr, float16_t beta, int Clda);\n") 
 
     #--------------------------------------
     # Micro-kernel implementation

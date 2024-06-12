@@ -33,7 +33,7 @@
 
 #include <sys/time.h>
 
-#include "dtypes.h"
+#include "ukernels.h"
 #include "formats.h"
 #include "arrays.h"
 #include "sutils.h"
@@ -41,18 +41,16 @@
 #include "colors.h"
 #include "inutils.h"
 
-#ifdef ENABLE_WINOGRAD
-  #include "convWinograd/conv_winograd.h"
-#endif
-
 #include "im2row.h"
 #include "im2col.h"
 
 #include "modelLevel/model_level.h"
 #include "gemm/gemm_blis.h"
+
 #include "asm_generator/ukernels/gemm_ukernel_headers.h"
 
 #undef min
+
 #include "convGemm/convgemm_blis.h"
 #include "convGemm/im2row_nhwc.h"
 
@@ -70,9 +68,10 @@
 
 int main(int argc, char *argv[]) {
   char* variant;
-  DTYPE *D, *F, *Y, *Yg, *DT, *FB, *DEXT, *Ac, *Ctmp, *Ac_blis, *Bc_blis;
-  DTYPE *U, *V, *M;
 
+  AB_TYPE *D, *F, *DT, *FB, *DEXT, *Ac, *Ctmp, *Ac_blis, *Bc_blis;
+  C_TYPE *Y, *Yg, alphap, betap;
+  
   size_t mc_blis, nc_blis, kc_blis;
 
   double t1, t2, time, tmin, error, nrm, tmp, errorthd, flops, GFLOPS;
@@ -108,8 +107,6 @@ int main(int argc, char *argv[]) {
   int CIB, COB, WOB;
   size_t test_n = 0;
   int mm, nn, kk;
-  DTYPE alphap;
-  DTYPE betap;
   int lda, ldb, ldc;
   int MR, NR, TH;
   char *ALG, *GEMM;
@@ -127,12 +124,21 @@ int main(int argc, char *argv[]) {
 
   int params[15];
 
-  ukernel_asm ukr;
-  ukernel_edge ukr_edge;
-
   testConfig_t* testConf=new_CNN_Test_Config(argv);
-
   load_model_level_params(argv[13], params);
+  
+  UK_TYPE uk;
+
+  #ifdef FP32
+    UK_TYPE      *uk_vec      = new_uk_asm_selector_fp32();
+    UK_EDGE_TYPE *uk_edge_vec = new_uk_asm_edge_selector_fp32();
+  #elif INT8_INT32
+    UK_TYPE      *uk_vec      = new_uk_intrinsic_selector_int8_int32();
+    UK_EDGE_TYPE *uk_edge_vec = NULL;
+  #else
+    printf("ERROR: Type unsupported\n");
+    exit(-1);
+  #endif
 
   tmin    = testConf->tmin;
   tformat = testConf->format;
@@ -159,14 +165,6 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  #ifdef RISCV
-    if (strcmp("WINOGRAD", ALG)==0){ printf("  ERROR: Winograd Test unsuported for RISC-V arch.\n"); exit(-1); }
-  #else
-      #ifdef DISABLE_WINOGRAD
-        if (strcmp("WINOGRAD", ALG)==0){ printf("  ERROR: Winograd Test on ARMv8 needs compile with BLIS and OpenBLAS linkage. \
-Please, enable it in Makefile.inc and rebuild the driver.\n"); exit(-1); }
-      #endif
-  #endif
 
   #if defined(INT8)
     errorthd = 0.5;
@@ -175,6 +173,8 @@ Please, enable it in Makefile.inc and rebuild the driver.\n"); exit(-1); }
   #elif defined(FP32)
     errorthd = 1.0e-5;
   #elif defined(FP64)
+    errorthd = 1.0e-14;
+  #elif defined(INT8_INT32)
     errorthd = 1.0e-14;
   #endif
 
@@ -230,57 +230,50 @@ Please, enable it in Makefile.inc and rebuild the driver.\n"); exit(-1); }
       nr_init  = 4;
     }
 
+
     best_error=0.0; best_flops=0.0; best_time = 0.0;
     for (mr_iter=mr_init; mr_iter < mr_limit + 1; mr_iter+=4) {
       for (nr_iter=nr_init; nr_iter < nr_limit + 1; nr_iter+=4) {
 
-        if (strcmp("CONVDIRECT", ALG)==0) {
-          MR = nr_iter; 
-          NR = mr_iter;
-        } else  {
-          MR = mr_iter;
-          NR = nr_iter;
-        }
+        MR = mr_iter;
+        NR = nr_iter;
+  
+        #ifdef FP32
+        if (strcmp("CONVDIRECT", ALG)==0)
+          uk_asm_selector_fp32(NR, MR, uk_vec, &uk);
+	else
+          uk_asm_selector_fp32(MR, NR, uk_vec, &uk);
+        #elif INT8_INT32
+        if (strcmp("CONVDIRECT", ALG)==0)
+          uk_intrinsic_selector_int8_int32(NR, MR, uk_vec, &uk);
+	else
+          uk_intrinsic_selector_int8_int32(MR, NR, uk_vec, &uk);
+        #endif
 
-        if ((strcmp("CONVDIRECT", ALG)==0) ||
-	    (strcmp("CONVGEMM",   ALG)==0) ||
-	    ((strcmp("LOWERING",  ALG)==0) && (strcmp("B3A2C0", GEMM)==0)) || 
-	    ((strcmp("LOWERING",  ALG)==0) && (strcmp("A3B2C0", GEMM)==0))) {
-          ukernels_selector(MR, NR, &ukr, &ukr_edge);
-	  if (ukr == NULL)  {
-	    if (testConf->bestof=='F') {printf("\n ERROR: Micro-kernel %dx%d unsuported. Try other size.\n\n", MR, NR); exit(-1);}
-	    continue; 
-	  }
-	}
-        
-        if (strcmp("CONVDIRECT", ALG)==0) {
-          MR = mr_iter; 
-          NR = nr_iter;
-          if (WOB != -1) WOB = WOB / MR * MR;
-          if (COB != -1) COB = COB / NR * NR;
-        }
+	if (uk == NULL) continue;
 
         if (strcmp("LOWERING", ALG)==0 || strcmp("CONVGEMM", ALG)==0) {
           if (model_on) {
 	    if (strcmp("A3B2C0", GEMM)==0)
-              get_optim_mc_nc_kc(sizeof(DTYPE), n_gemm, m_gemm, k_gemm, NR, MR, &COB, &WOB, &CIB, params);
+              get_optim_mc_nc_kc(sizeof(C_TYPE), n_gemm, m_gemm, k_gemm, NR, MR, &COB, &WOB, &CIB, params);
 	    else
-              get_optim_mc_nc_kc(sizeof(DTYPE), m_gemm, n_gemm, k_gemm, MR, NR, &WOB, &COB, &CIB, params);
+              get_optim_mc_nc_kc(sizeof(C_TYPE), m_gemm, n_gemm, k_gemm, MR, NR, &WOB, &COB, &CIB, params);
 
 	    //mc=WOB; nc=COB; kc=CIB
             mc_blis = WOB; nc_blis = COB; kc_blis = CIB;
 	  }
-          Ac_blis = (DTYPE *)aligned_alloc(32, TH*(MR+mc_blis)*(kc_blis)*sizeof(DTYPE));
-          Bc_blis = (DTYPE *)aligned_alloc(32, TH*(kc_blis)*(NR+nc_blis)*sizeof(DTYPE));
+          Ac_blis = (AB_TYPE *)aligned_alloc(32, TH*(MR+mc_blis)*(kc_blis)*sizeof(AB_TYPE));
+          Bc_blis = (AB_TYPE *)aligned_alloc(32, TH*(kc_blis)*(NR+nc_blis)*sizeof(AB_TYPE));
         } else {
           
 	  if (model_on) {
 	    //m=Wo; n=Co; k=Ci
-            MR = nr_iter; NR = mr_iter;
-            get_optim_mc_nc_kc(sizeof(DTYPE), k, wo, c, MR, NR, &COB, &WOB, &CIB, params);
+            get_optim_mc_nc_kc(sizeof(C_TYPE), k, wo, c, NR, MR, &COB, &WOB, &CIB, params);
 	    //TODO: Poor performance. Why?? Reverse micro-kernels??
             //get_optim_mc_nc_kc(sizeof(DTYPE), wo, k, c, MR, NR, &WOB, &COB, &CIB, params);
-            MR = mr_iter; NR = nr_iter;
+	  } else {
+            if (WOB != -1) WOB = WOB / MR * MR;
+            if (COB != -1) COB = COB / NR * NR;
 	  }
 
           if (WOB != wo && WOB % MR != 0) {
@@ -291,30 +284,28 @@ Please, enable it in Makefile.inc and rebuild the driver.\n"); exit(-1); }
             exit(-1);
           }
 
-          Ac = (DTYPE *) aligned_alloc( 32, ((int) TH*WOB*MR*CIB*sizeof(DTYPE)));
-          FB = (DTYPE *) malloc( ceil(((float) k)/NR)*NR*c*r*s*sizeof(DTYPE));
+          Ac = (AB_TYPE *) aligned_alloc( 32, ((int) TH*WOB*MR*CIB*sizeof(AB_TYPE)));
+          FB = (AB_TYPE *) malloc( ceil(((float) k)/NR)*NR*c*r*s*sizeof(AB_TYPE));
 
         }
     
         if (strcmp("LOWERING", ALG)==0)
-          DEXT = (DTYPE *) malloc( (h*w*n)*(r*s*c)*sizeof(DTYPE));
+          DEXT = (AB_TYPE *) malloc( (h*w*n)*(r*s*c)*sizeof(AB_TYPE));
           
-        D = (DTYPE *) malloc( n*c*h*w*sizeof(DTYPE));
-        F = (DTYPE *) malloc( k*c*r*s*sizeof(DTYPE));   
-        Y = (DTYPE *) malloc( n*k*h*w*sizeof(DTYPE));
+        D = (AB_TYPE *) malloc( n*c*h*w*sizeof(AB_TYPE));
+        F = (AB_TYPE *) malloc( k*c*r*s*sizeof(AB_TYPE));   
+        Y = (C_TYPE *) malloc( n*k*h*w*sizeof(C_TYPE));
           
-        Ctmp = (DTYPE *)malloc(TH * MR  * NR *sizeof(DTYPE));
+        Ctmp = (C_TYPE *)malloc(TH * MR  * NR *sizeof(C_TYPE));
     
         if ( testConf->test=='T' )
-          Yg = (DTYPE *) malloc( n*k*h*w*sizeof(DTYPE) );   
+          Yg = (C_TYPE *) malloc( n*k*h*w*sizeof(C_TYPE) );   
           
         Ci_Cib = (int)ceil(((float) c)/CIB);
         Co_Cob = (int)ceil(((float) k)/COB);
         Co_Nr  = (int)ceil(((float) k)/NR);
         Co_Mr  = (int)ceil(((float) k)/MR);
     
-
-
         ldD3 = c;
         ldD2 = w * ldD3;
         ldD1 = h * ldD2;
@@ -355,34 +346,10 @@ Please, enable it in Makefile.inc and rebuild the driver.\n"); exit(-1); }
              print_tensor4D( "F", c, r, s, k, F, ldF1, ldF2, ldF3 );
          }
     
-        if (strcmp("CONVDIRECT", ALG)==0) {
+        if (strcmp("CONVDIRECT", ALG)==0)
           transform_filter_block_blis(c, k, r, s, F,  ldF1,  ldF2,  ldF3,
 				      FB, ldFB1, ldFB2, ldFB3, ldFB4, tformat, 
 				      MR, NR);
-        } else if (strcmp("WINOGRAD", ALG)==0) {
-          
-	  if (r != 3 && s != 3) { 
-	    wino_on = 0; goto show_results; 
-	  }
-
-	  if (wino_on) {
-            h -= 2; w -= 2; //Restore original values for Winograd Convolution.
-	    vpadding = 1; hpadding = 1;
-            m=2; //TODO: m=2 if defined(m2r3) But. ¿¿mr=4??
-            t = m + r - 1;
-            tile_H = ceil(((double) h + 2 * vpadding - t) / m) + 1;
-            tile_W = ceil(((double) w + 2 * hpadding - t) / m) + 1;
-
-            #ifdef ENABLE_WINOGRAD
-              conv_winograd_workspace_alloc(m, r, n, k, c, h, w, r, s, vpadding, hpadding, &U, &V, &M);
-	      memset(U, 0, t * t * k * c * sizeof(DTYPE));
-              memset(V, 0, t * t * c * (n * tile_H * tile_W) * sizeof(DTYPE));
-              memset(M, 0, t * t * k * (n * tile_H * tile_W) * sizeof(DTYPE));
-	      conv_winograd_2x2_3x3_neon_fp32_nhwc_pre(m, r, n, k, c, r, s, F, ldF1, ldF2, ldF3, U);
-            #endif
-	  }
-	}
-   
 
         time  = 0.0; 
         t1    = dclock();
@@ -417,12 +384,12 @@ Please, enable it in Makefile.inc and rebuild the driver.\n"); exit(-1); }
               gemm_blis_B3A2C0( 'C', 'C', 'C', 'N', 'N', mm, nn, kk, 
                                 alphap, F, lda, DEXT, ldb, betap, Y, ldc,
                                 Ac_blis, Bc_blis, mc_blis, nc_blis, kc_blis, 
-				MR, NR, TH, testConf->LOOP, Ctmp, ukr, ukr_edge);
+				MR, NR, TH, testConf->LOOP, Ctmp, uk_vec, uk_edge_vec);
 	    } else if (strcmp("A3B2C0", GEMM)==0) {
               gemm_blis_A3B2C0( 'C', 'C', 'C', 'N', 'N', mm, nn, kk, 
                                 alphap, F, lda, DEXT, ldb, betap, Y, ldc,
                                 Ac_blis, Bc_blis, mc_blis, nc_blis, kc_blis, 
-				MR, NR, TH, testConf->LOOP, Ctmp, ukr, ukr_edge);
+				MR, NR, TH, testConf->LOOP, Ctmp, uk_vec, uk_edge_vec);
 	    } else {
 	      printf("ERROR: Algorithm unsupported.\n"); exit(-1);
 	    }
@@ -440,26 +407,17 @@ Please, enable it in Makefile.inc and rebuild the driver.\n"); exit(-1); }
 			           0.0, Y, k,
 			           Ac_blis, pack_RB_convgemm,
 			           Bc_blis, pack_CB_nhwc,
-			           &conv_params, mc_blis, nc_blis, kc_blis, MR, NR, TH, Ctmp, 
-			           ukr, ukr_edge);
+			           &conv_params, mc_blis, 
+				   nc_blis, kc_blis, MR, NR, TH, 
+				   Ctmp, uk_vec, uk_edge_vec);
 
           } else if (strcmp("CONVDIRECT", ALG)==0) {
             convDirect_block_blis(n, k, c, h, w, ho, wo, r, s, 
 	    		          D,  ldD1, ldD2,  ldD3, 
 	    		          FB, ldFB1, ldFB2, ldFB3, ldFB4,
 	    		          Y,  ldY1, ldY2,  ldY3,
-                                  Ac, Ctmp, tformat, CIB, COB, WOB, MR, NR, TH, 
-	    		          ukr, ukr_edge);
-            
-          } else if (strcmp("WINOGRAD", ALG)==0) {
-              #ifdef ENABLE_WINOGRAD
-                conv_winograd_2x2_3x3_neon_fp32_nhwc_kernel(m, r, n, k, c,
-                       ho, wo, r, s, vpadding, hpadding,
-                       D,  ldD1, ldD2, ldD3, Y, ldY1, ldY2, ldY3,
-                       NULL, U,  V, M, 'F', 'F', NULL, NULL, NULL, NULL);
-	      #else
-                continue;
-              #endif
+                                  Ac, Ctmp, tformat, CIB, COB, WOB, 
+				  MR, NR, TH, uk_vec, uk_edge_vec);
           } else {
 	    printf("ERROR: Algorithm unsuported\n"); exit(-1);
 	  }
@@ -474,14 +432,6 @@ Please, enable it in Makefile.inc and rebuild the driver.\n"); exit(-1); }
 	    
         // Test result
         if ( testConf->test=='T' ) {
-	  if (strcmp("WINOGRAD", ALG)==0)
-          convDirect_original(n, k, c, ho, wo, ho, wo, 
-			      r, s, vpadding, hpadding,
-		              D,  ldD1, ldD2, ldD3, 
-		              F,  ldF1, ldF2, ldF3, 
-		              Yg, ldY1, ldY2, ldY3,
-		              tformat);
-	  else
           convDirect_original(n, k, c, h, w, ho, wo, 
 			      r, s, vpadding, hpadding,
 		              D,  ldD1, ldD2, ldD3, 
@@ -527,11 +477,10 @@ Please, enable it in Makefile.inc and rebuild the driver.\n"); exit(-1); }
           }
         }
 	
-  show_results:	
 	if (!wino_on)
           printf(" | -    -  |   -         -        -    | %3d %5d %5d %5d %5d   (%1d,%1d)  |     -         -        -     |", n, k, c, ho, wo, r, s);
 	else {
-          if ((strcmp("LOWERING", ALG)==0 || strcmp("WINOGRAD", ALG)==0) && (strcmp("BLIS", GEMM)==0 || strcmp("OPENBLAS", GEMM)==0))
+          if (strcmp("LOWERING", ALG)==0  && (strcmp("BLIS", GEMM)==0 || strcmp("OPENBLAS", GEMM)==0))
             printf(" | -    -  |   -         -        -    | %3d %5d %5d %5d %5d   (%1d,%1d)  | %s%-10.2e%s %-8.1e %8.1e |", n, k, c, ho, wo, r, s, COLOR_BOLDMAGENTA, GFLOPS, COLOR_RESET, time, error);
 	  else
             printf(" | %-3d  %-2d | %-8d %-8d %-8d| %3d %5d %5d %5d %5d   (%1d,%1d)  | %s%-10.2e%s %-8.1e %8.1e |", MR, NR, WOB, COB, CIB,  n, k, c, ho, wo, r, s, COLOR_BOLDMAGENTA, GFLOPS, COLOR_RESET, time, error);
@@ -564,12 +513,6 @@ Please, enable it in Makefile.inc and rebuild the driver.\n"); exit(-1); }
           free(Bc_blis);
           if (strcmp("LOWERING", ALG)==0)
             free(DEXT);
-	} else if (strcmp("WINOGRAD", ALG)==0 && wino_on) {
-          #ifdef ENABLE_WINOGRAD
-	    conv_winograd_workspace_dealloc(&U, &V, &M);
-          #else
-	   continue;
-          #endif 
         } else {
           free(Ac); 
           free(FB);
@@ -599,9 +542,6 @@ Please, enable it in Makefile.inc and rebuild the driver.\n"); exit(-1); }
 
       fprintf(testConf->fd_csv,"%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%.2e;%.2f;%.2e;%d;%d\n",testConf->cnn[cnn_i].layer, best_WOB, best_COB, best_CIB, n, k, c, ho, wo, r, s, best_time, best_flops, best_error, best_mr, best_nr);
     } else
-      if (strcmp("WINOGRAD", ALG)==0 && !wino_on) //Winowrad unsuported for this layer
-        fprintf(testConf->fd_csv,"%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%.2e;%.2f;%.2e;%d;%d\n",testConf->cnn[cnn_i].layer, 0, 0, 0, n, k, c, ho, wo, r, s, 0.0, 0.0, error, 0, 0);
-      else
         fprintf(testConf->fd_csv,"%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%.2e;%.2f;%.2e;%d;%d\n",testConf->cnn[cnn_i].layer, WOB, COB, CIB, n, k, c, ho, wo, r, s, time, GFLOPS, error, MR, NR);
   }
 
@@ -610,5 +550,8 @@ Please, enable it in Makefile.inc and rebuild the driver.\n"); exit(-1); }
     
   printf(" +=========+===========================+======================================+==============================+======+\n");
   printf("\n");
+
   return 0;
+
 }
+

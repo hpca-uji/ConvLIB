@@ -36,7 +36,7 @@
 #include <stdlib.h>
 #include <sys/time.h>
 
-#include "dtypes.h"
+#include "ukernels.h"
 
 void generate_matrix( char orderM, size_t m, size_t n, DTYPE *M, size_t ldM )
 {

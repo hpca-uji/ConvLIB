@@ -1,10 +1,10 @@
 #include "im2col.h"
 
 void im2col(float *restrict cols, int ld, const float *restrict in, 
-		int batches, int channels, int height, int width,
-                 int oheight, int owidth, int kheight, int kwidth, 
-		 int vpadding, int hpadding, int vstride, int hstride,
-                 int vdilation, int hdilation) {
+	    int batches, int channels, int height, int width,
+            int oheight, int owidth, int kheight, int kwidth, 
+            int vpadding, int hpadding, int vstride, int hstride,
+            int vdilation, int hdilation) {
 
   int b, c, kx, ky, row, x, ix, y, iy, col;
   /*

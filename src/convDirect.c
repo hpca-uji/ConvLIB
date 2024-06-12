@@ -1,47 +1,8 @@
 #include "convDirect.h"
 
-void gemm_base( int m, int n, int k, 
-                DTYPE alpha, DTYPE *A, int ldA, 
-                             DTYPE *B, int ldB, 
-                DTYPE beta,  DTYPE *C, int ldC ){
-
-  //Baseline micro-kernel 
-  //Replace with specialized micro-kernel where C-->m x n is resident in registers
-
-  int    i, j, p;
-  DTYPE  tmp;
-
-  for ( j=0; j<n; j++ )
-    for ( i=0; i<m; i++ ) {
-      tmp = 0.0; 
-      for ( p=0; p<k; p++ ) 
-        tmp += Arow(i,p) * Brow(p,j);
-      Crow(i,j) = alpha*tmp + beta*Crow(i,j);
-    }
-}
-
-void gemm_base_col( int m, int n, int k, 
-		    DTYPE alpha, DTYPE *A, int ldA, 
-		    DTYPE *B, int ldB, 
-		    DTYPE beta,  DTYPE *C, int ldC ) {
-
-  //Baseline micro-kernel 
-  //Replace with specialized micro-kernel where C-->m x n is resident in registers
-
-  int    i, j, p;
-  DTYPE  tmp;
-
-  for ( j=0; j<n; j++ )
-    for ( i=0; i<m; i++ ) {
-      tmp = 0.0; 
-      for ( p=0; p<k; p++ ) 
-        tmp += Acol(i,p) * Bcol(p,j);
-      Ccol(i,j) = alpha*tmp + beta*Ccol(i,j);
-    }
-}
 
 
-void packRB( char orderA, char transA, int mc, int nc, DTYPE *A, int ldA, DTYPE *Ac, int RR ){
+void packRB( char orderA, char transA, int mc, int nc, AB_TYPE *A, int ldA, AB_TYPE *Ac, int RR ){
   int    i, j, ii, k, rr;
 
   if ( ((transA=='N')&&( orderA=='C'))||
@@ -77,9 +38,9 @@ void convDirect_original( int n, int k, int c,
                           int ho, int wo, 
                           int r, int s, 
 			  int vpadding, int hpadding,
-                          DTYPE *D, int ldD1, int ldD2, int ldD3,
-	                  DTYPE *F, int ldF1, int ldF2, int ldF3,
-                          DTYPE *Yg, int ldY1, int ldY2, int ldY3,
+                          AB_TYPE *D, int ldD1, int ldD2, int ldD3,
+	                  AB_TYPE *F, int ldF1, int ldF2, int ldF3,
+                          C_TYPE *Yg, int ldY1, int ldY2, int ldY3,
 			  int tformat)
 { 
   int in, ik, ic, ih, iw, ir, is, x_x, x_y;
@@ -131,8 +92,8 @@ void convDirect_original( int n, int k, int c,
 
 void transform_filter_block_blis( int Ci, int Co,
 				  int Hf, int Wf,
-				  DTYPE *F,  int ldF1,  int ldF2,  int ldF3,
-				  DTYPE *FB, int ldFB1, int ldFB2, int ldFB3, int ldFB4,
+				  AB_TYPE *F,  int ldF1,  int ldF2,  int ldF3,
+				  AB_TYPE *FB, int ldFB1, int ldFB2, int ldFB3, int ldFB4,
 				  int tformat, int MR, int NR) {
   int  i, j, jj, jb, j2, m, n;  
   // Quick return if possible
@@ -157,16 +118,13 @@ void transform_filter_block_blis( int Ci, int Co,
 
 }
 
-void convDirect_block_blis( int t,     int Co,   int Ci, 
-                            int Ho,    int Wo, 
-                            int ho,    int wo, 
-                            int Hf,    int Wf,
-		            DTYPE *D,  int ldD1,  int ldD2,  int ldD3,
-	                    DTYPE *FB, int ldFB1, int ldFB2, int ldFB3, int ldFB4,
-                            DTYPE *Y,  int ldY1,  int ldY2,  int ldY3,
-                            DTYPE *Ac, DTYPE *Ctmp,
-		            int tformat, int CIB, int COB, int WOB, 
-			    int MR, int NR, int TH, ukernel_asm ukr, ukernel_edge ukr_edge) {
+void convDirect_block_blis( int t, int Co, int Ci, int Ho,    int Wo, 
+                            int ho,    int wo, int Hf,    int Wf,
+		            AB_TYPE *D,  int ldD1,  int ldD2,  int ldD3,
+	                    AB_TYPE *FB, int ldFB1, int ldFB2, int ldFB3, int ldFB4,
+                            C_TYPE *Y,  int ldY1,  int ldY2,  int ldY3,
+                            AB_TYPE *Ac, C_TYPE *Ctmp, int tformat, int CIB, int COB, int WOB, 
+			    int MR, int NR, int TH, UK_TYPE *uk_vec, UK_EDGE_TYPE *uk_edge_vec) {
 
   if (tformat == NCHW) {
     printf("1. Case not yet implemented %d\n", tformat); 
@@ -186,11 +144,24 @@ void convDirect_block_blis( int t,     int Co,   int Ci,
 
   int jr, nr, jr2, ir, mr, in = 0;
   int kb_limit;
-  float alpha = 1.0;
-  float beta  = 1.0;
-  float beta_edge = 0.0;
+  
+  C_TYPE alpha = 1;
+  C_TYPE beta  = 1;
+  C_TYPE beta_edge = 0;
 
-  DTYPE *Y_ptr;
+  C_TYPE *Y_ptr;
+
+  UK_TYPE uk;
+  UK_EDGE_TYPE uk_edge;
+
+  #ifdef FP32
+    uk_asm_selector_fp32(NR, MR, uk_vec, &uk);
+    uk_asm_edge_selector_fp32(NR, MR, uk_edge_vec, &uk_edge);
+  #elif INT8_INT32
+    uk_intrinsic_selector_int8_int32(NR, MR, uk_vec, &uk);
+    uk_edge = uk;
+  #endif
+
 
   if (TH == 1) {
     for ( h=0; h<t; h++ ) 
@@ -210,12 +181,10 @@ void convDirect_block_blis( int t,     int Co,   int Ci,
 		     for ( ir=0; ir < min(kb, Wo-k-m+1); ir += MR) {
 		       mr = min(min(kb, Wo-k-m+1)-ir, MR);
 		       Y_ptr=&Yrow_NHWC(h, j + jr, l, k + ir);
-
-		       if (mr == MR && nr == NR)
-                         ukr(ib, &alpha, &FBrow_NHWC(j2 * Cob_Nr + jr2, i, n, m, 0), &Ac[ir*ib], &beta, Y_ptr, ldY3 * sizeof(float));
-                       else
-                         ukr_edge(nr, mr, NR, MR, ib, &alpha, &FBrow_NHWC(j2 * Cob_Nr + jr2, i, n, m, 0), &Ac[ir*ib], &beta, Ctmp, Y_ptr, ldY3);
-
+		       
+                       generic_microkernel(nr, mr, NR, MR, &FBrow_NHWC(j2 * Cob_Nr + jr2, i, n, m, 0), 
+				           &Ac[ir*ib], Y_ptr, ib, ldY3, alpha, beta, Ctmp, uk, uk_edge);
+		       	
                      }
                    }
                  }
@@ -227,12 +196,11 @@ void convDirect_block_blis( int t,     int Co,   int Ci,
   } else { 
     int ho_chunk = (int) ceil((double)ho/TH); 
     int th_id = 0;
-    DTYPE *Ctmp_ptr = Ctmp;
     #ifdef OMP_ENABLE
-    #pragma omp parallel num_threads(TH) private(th_id, h, i, i2, ib, l, k, kb, n, m, j, j2, jb, jr, nr, jr2, ir, mr, kb_limit, ju, iu, Y_ptr, Ctmp_ptr) firstprivate(ho_chunk, beta_edge)
+    #pragma omp parallel num_threads(TH) private(th_id, h, i, i2, ib, l, k, kb, n, m, j, j2, jb, jr, nr, jr2, ir, mr, kb_limit, ju, iu, Y_ptr) firstprivate(ho_chunk, beta_edge)
     {
       th_id = omp_get_thread_num();
-      DTYPE *Ctmp_ptr = &Ctmp[th_id * (MR * NR)];
+      C_TYPE *Ctmp_ptr = &Ctmp[th_id * (MR * NR)];
     #else
       printf("ERROR: Parallel option configured but not compiled\n"); 
       exit(-1);
@@ -256,13 +224,9 @@ void convDirect_block_blis( int t,     int Co,   int Ci,
 	              for ( ir=0; ir < kb_limit; ir += MR) {
 	  	        mr = min(kb_limit-ir, MR);
 		        Y_ptr=&Yrow_NHWC(h, j + jr, l, k + ir);
-                        
-		       if (mr == MR && nr == NR)
-                         ukr(ib, &alpha, &FBrow_NHWC(j2 * Cob_Nr + jr2, i, n, m, 0), 
-			    &Ac[(th_id * CIB * WOB) + (ir*ib)], &beta, Y_ptr, ldY3 * sizeof(float));
-                       else
-                         ukr_edge(nr, mr, NR, MR, ib, &alpha, &FBrow_NHWC(j2 * Cob_Nr + jr2, i, n, m, 0), 
-				&Ac[(th_id * CIB * WOB) + (ir*ib)], &beta, Ctmp_ptr, Y_ptr, ldY3);
+
+                        generic_microkernel(nr, mr, NR, MR, &FBrow_NHWC(j2 * Cob_Nr + jr2, i, n, m, 0), 
+				           &Ac[(th_id * CIB * WOB) + (ir*ib)], Y_ptr, ib, ldY3, alpha, beta, Ctmp_ptr, uk, uk_edge);
 
 	              }
                     }
@@ -530,5 +494,43 @@ void packRB_neon( char orderA, char transA, int mc, int nc, DTYPE *A, int ldA, D
       }
     }
 
+}
+void gemm_base( int m, int n, int k, 
+                C_TYPE alpha, AB_TYPE *A, int ldA, 
+                AB_TYPE *B, int ldB, DTYPE beta,  C_TYPE *C, int ldC ) {
+
+  //Baseline micro-kernel 
+  //Replace with specialized micro-kernel where C-->m x n is resident in registers
+
+  int    i, j, p;
+  C_TYPE  tmp;
+
+  for ( j=0; j<n; j++ )
+    for ( i=0; i<m; i++ ) {
+      tmp = 0.0; 
+      for ( p=0; p<k; p++ ) 
+        tmp += Arow(i,p) * Brow(p,j);
+      Crow(i,j) = alpha*tmp + beta*Crow(i,j);
+    }
+}
+
+void gemm_base_col( int m, int n, int k, 
+		    C_TYPE alpha, AB_TYPE *A, int ldA, 
+		    AB_TYPE *B, int ldB, 
+		    C_TYPE beta,  C_TYPE *C, int ldC ) {
+
+  //Baseline micro-kernel 
+  //Replace with specialized micro-kernel where C-->m x n is resident in registers
+
+  int    i, j, p;
+  C_TYPE  tmp;
+
+  for ( j=0; j<n; j++ )
+    for ( i=0; i<m; i++ ) {
+      tmp = 0.0; 
+      for ( p=0; p<k; p++ ) 
+        tmp += Acol(i,p) * Bcol(p,j);
+      Ccol(i,j) = alpha*tmp + beta*Ccol(i,j);
+    }
 }
 */

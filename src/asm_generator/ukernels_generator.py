@@ -140,7 +140,7 @@ if __name__ == "__main__":
     msg = ""
     print ("\n")
     print ("+============================================================+")
-    print ("|                ASM MICRO-KERNELS GENERATOR                 |")
+    print ("| ASM MICRO-KERNELS GENERATOR: %sFP32%s                          |" % (bcolor.WARNING, bcolor.ENDC))
     print ("+============================================================+")
     print ("|    [*] ASM Architecture               | %-18s |" % (arch))
     if unroll == 0:
@@ -177,6 +177,7 @@ if __name__ == "__main__":
     if arch == "riscv":
         nr_lim=10
 
+    micros = []
     nmicro = 1
     for mr in range(4, maxvec, 4):
         for nr in range(4, nr_lim, 4):
@@ -195,9 +196,11 @@ if __name__ == "__main__":
                 #----------------------------------------------------------------
                 asm.generate_umicro()
                 cm.generate_edge_function(asm)
-                cm.generate_selector_function(asm)
                 print(f"|    [%2d] Micro-kernel                  | %s%-8d%s | %s%-8d%s|" % (nmicro, bcolor.OKCYAN, MR, bcolor.ENDC, bcolor.OKCYAN, NR, bcolor.ENDC))
                 nmicro += 1
+                micros.append((mr, nr))
                 #----------------------------------------------------------------
-    cm.generate_selector_function(asm, close=True)
-    print ("+=================================================+=====+====+\n")
+
+    cm.generate_selector(micros, maxvec, nr_lim)
+    print ("+=================================================+=====+====+")
+

@@ -2,8 +2,9 @@
 #include <stdlib.h>
 #include <math.h>
 
-#include "dtypes.h"
+#include "../ukernels.h"
 #include "../asm_generator/ukernels/gemm_ukernel_headers.h"
+#include "../intrinsic_generator/ukernels/uKernels_intrinsic_int8_int32.h"
 
 #ifdef OMP_ENABLE
   #include <omp.h>
@@ -31,28 +32,25 @@
 #define Crow(a1,a2)  C[ (a1)*(ldC)+(a2) ]
 #define Mrow(a1,a2)  M[ (a1)*(ldM)+(a2) ]
 
+
 void gemm_blis_B3A2C0( char, char, char, char, char, size_t, size_t, size_t, 
-		       DTYPE, DTYPE *, size_t, DTYPE *, size_t, 
-		       DTYPE, DTYPE *, size_t, DTYPE *, DTYPE *, size_t, 
-		       size_t, size_t, int, int, int, int, DTYPE *,
-		       ukernel_asm ukr, ukernel_edge ukr_edge);
+		       C_TYPE, AB_TYPE *, size_t, AB_TYPE *, size_t, 
+		       C_TYPE, C_TYPE *, size_t,  AB_TYPE *, AB_TYPE *, 
+		       size_t, size_t, size_t, int, int, int, int, C_TYPE *,
+		       UK_TYPE *uk_vec, UK_EDGE_TYPE *uk_edge_vec);
+
 
 void gemm_blis_A3B2C0( char, char, char, char, char, size_t, size_t, size_t, 
-		       DTYPE, DTYPE *, size_t, DTYPE *, size_t, 
-		       DTYPE, DTYPE *, size_t, DTYPE *, DTYPE *, size_t, 
-		       size_t, size_t, int, int, int, int, DTYPE *,
-		       ukernel_asm ukr, ukernel_edge ukr_edge);
+		       C_TYPE, AB_TYPE *, size_t, AB_TYPE *, size_t, 
+		       C_TYPE, C_TYPE *, size_t, AB_TYPE *, AB_TYPE *, 
+		       size_t, size_t, size_t, int, int, int, int, C_TYPE *,
+		       UK_TYPE *uk_vec, UK_EDGE_TYPE *uk_edge_vec);
 
-void gemm_base_Cresident( char, int, int, int, DTYPE, DTYPE *, int, DTYPE *, int, DTYPE, DTYPE *, int );
-void gemm_base_ABresident( char, char, int, int, int, DTYPE, DTYPE *, int, DTYPE *, int, DTYPE, DTYPE *, int );
 
-void pack_RB( char, char, int, int, DTYPE *, int, DTYPE *, int );
-void pack_CB( char, char, int, int, DTYPE *, int, DTYPE *, int );
-void unpack_RB( char, char, int, int, DTYPE *, int, DTYPE *, int );
-void unpack_CB( char, char, int, int, DTYPE *, int, DTYPE *, int );
 
-//-----------------------------------------------------------------------------------
-void pack_RB_v( char, char, int, int, DTYPE *, int, DTYPE *, int );
-void pack_CB_v( char, char, int, int, DTYPE *, int, DTYPE *, int );
-//-----------------------------------------------------------------------------------
+void pack_RB( char, char, int, int, AB_TYPE *, int, AB_TYPE *, int );
+void pack_CB( char, char, int, int, AB_TYPE *, int, AB_TYPE *, int );
+
+void pack_RB_v( char, char, int, int, AB_TYPE *, int, AB_TYPE *, int );
+void pack_CB_v( char, char, int, int, AB_TYPE *, int, AB_TYPE *, int );
 

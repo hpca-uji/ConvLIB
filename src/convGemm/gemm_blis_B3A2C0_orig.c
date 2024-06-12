@@ -27,22 +27,34 @@
 void convgemm_blis_B3A2C0(char orderA, char orderB, char orderC,
                            char transA, char transB,
                            int m, int n, int k,
-                           float alpha, const float *A, int ldA,
-                           const float *B, int ldB,
-                           float beta, float *C, int ldC,
-                           float *Ac, pack_func pack_RB,
-                           float *Bc, pack_func pack_CB,
+                           C_TYPE alpha, const AB_TYPE *A, int ldA,
+                           const AB_TYPE *B, int ldB,
+                           C_TYPE beta, C_TYPE *C, int ldC,
+                           AB_TYPE *Ac, pack_func pack_RB,
+                           AB_TYPE *Bc, pack_func pack_CB,
                            const conv_p *conv_params,
-			   int MC, int NC, int KC, int MR, int NR, int TH, float *Ctmp,
-			   ukernel_asm ukr, ukernel_edge ukr_edge) {
+			   int MC, int NC, int KC, int MR, int NR, int TH, C_TYPE *Ctmp,
+			   UK_TYPE *uk_vec, UK_EDGE_TYPE *uk_edge_vec) {
 
     // Quick return if possible
-    float zero = (float) 0.0, one = (float) 1.0;
+    C_TYPE zero = 0, one = 1;
+
     if ((m == 0) || (n == 0) || (((alpha == zero) || (k == 0)) && (beta == one)))
         return;
 
+    UK_TYPE uk;
+    UK_EDGE_TYPE uk_edge;
+
+    #ifdef FP32
+      uk_asm_selector_fp32(MR, NR, uk_vec, &uk);
+      uk_asm_edge_selector_fp32(MR, NR, uk_edge_vec, &uk_edge);
+    #elif INT8_INT32
+      uk_intrinsic_selector_int8_int32(MR, NR, uk_vec, &uk);
+      uk_edge = uk;
+    #endif
+
     int th_id = 0, i, j;
-    float beta_edge = 0.0;
+
     #include "quick_gemm.h"
 
     for (int jc = 0; jc < n; jc += NC) {
@@ -70,18 +82,17 @@ void convgemm_blis_B3A2C0(char orderA, char orderB, char orderC,
  		  #else
 		  th_id = 0;
 		  #endif
-		  float *Ctmp_th = &Ctmp[th_id * MR * NR];
+		  C_TYPE *Ctmp_th = &Ctmp[th_id * MR * NR];
 
                   for (int ir = 0; ir < mc; ir += MR) {
 
                     int mr = min(mc - ir, MR);
                     int nr = min(nc - jr, NR);
-                    float *Cptr = (orderC == 'C') ? &Ccol(ic + ir, jc + jr) : &Crow(ic + ir, jc + jr);
+                    C_TYPE *Cptr = (orderC == 'C') ? &Ccol(ic + ir, jc + jr) : &Crow(ic + ir, jc + jr);
 
-		    if (mr == MR && nr == NR)
-                      ukr(kc, &alpha, &Ac[ir*kc], &Bc[jr*kc], &betaI, Cptr, ldC * sizeof(float));
-                    else
-                      ukr_edge(mr, nr, MR, NR, kc, &alpha, &Ac[ir*kc], &Bc[jr*kc], &betaI, Ctmp_th, Cptr, ldC);
+                    generic_microkernel(mr, nr, MR, NR, &Ac[ir*kc], &Bc[jr*kc],
+                                        Cptr, kc, ldC, alpha, betaI, Ctmp_th, uk, uk_edge);
+
 
                     }
                 }
