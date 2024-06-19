@@ -154,13 +154,21 @@ void convDirect_block_blis( int t, int Co, int Ci, int Ho,    int Wo,
   UK_TYPE uk;
   UK_EDGE_TYPE uk_edge;
 
-  #ifdef FP32
-    uk_asm_selector_fp32(NR, MR, uk_vec, &uk);
-    uk_asm_edge_selector_fp32(NR, MR, uk_edge_vec, &uk_edge);
-  #elif INT8_INT32
-    uk_intrinsic_selector_int8_int32(NR, MR, uk_vec, &uk);
-    uk_edge = uk;
-  #endif
+  fselector(NR, MR, uk_vec, uk_edge_vec, &uk, &uk_edge);
+
+  //#ifdef FP32
+    //uk_asm_selector_fp32(NR, MR, uk_vec, &uk);
+    //uk_asm_edge_selector_fp32(NR, MR, uk_edge_vec, &uk_edge);
+  //#elif FP16
+    //uk_intrinsic_selector_fp16(NR, MR, uk_vec, &uk);
+    //uk_edge = uk;
+  //#elif INT8_INT32_U8
+    //uk_intrinsic_selector_int8_int32(NR, MR, uk_vec, &uk);
+    //uk_edge = uk;
+  //#elif INT8_INT32_S8
+    //uk_intrinsic_selector_int8_int32(NR, MR, uk_vec, &uk);
+    //uk_edge = uk;
+  //#endif
 
 
   if (TH == 1) {

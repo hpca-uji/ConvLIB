@@ -199,6 +199,18 @@ testConfig_t* new_CNN_Test_Config(char * argv[]) {
   }
   printf(" |  [%s*%s] Threads Number                 |  %s%-74d%s|\n",  COLOR_BOLDYELLOW, COLOR_RESET, COLOR_BOLDCYAN, new_testConfig->TH, COLOR_RESET);
   printf(" |  [%s*%s] Best Of Micro-kernels          |  %s%-74s%s|\n",  COLOR_BOLDYELLOW, COLOR_RESET, COLOR_BOLDCYAN, argv[12][0] == 'T' ? "ON" : "OFF", COLOR_RESET);
+  
+  #ifdef FP32
+    printf(" |  [%s*%s] Data Type                      |  %s%-74s%s|\n", COLOR_BOLDYELLOW, COLOR_RESET, COLOR_BOLDCYAN, "FP32", COLOR_RESET);
+  #elif FP16
+    printf(" |  [%s*%s] Data Type                      |  %s%-74s%s|\n", COLOR_BOLDYELLOW, COLOR_RESET, COLOR_BOLDCYAN, "FP16", COLOR_RESET);
+  #elif INT8_INT32_S8
+    printf(" |  [%s*%s] Data Type                      |  %s%-74s%s|\n", COLOR_BOLDYELLOW, COLOR_RESET, COLOR_BOLDCYAN, "INT8|INT32 (S8)", COLOR_RESET);
+  #elif INT8_INT32_U8
+    printf(" |  [%s*%s] Data Type                      |  %s%-74s%s|\n", COLOR_BOLDYELLOW, COLOR_RESET, COLOR_BOLDCYAN, "INT8|INT32 (U8)", COLOR_RESET);
+  #else
+    printf(" |  [%s*%s] Data Type                      |  %s%-74s%s|\n", COLOR_BOLDYELLOW, COLOR_RESET, COLOR_BOLDCYAN, "UNKNOWN", COLOR_RESET);
+  #endif
   printf(" +=====================================+============================================================================+\n\n");
 
   if ((new_testConfig->debug == 'T') && (new_testConfig->test != 'T')) {

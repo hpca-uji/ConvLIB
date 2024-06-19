@@ -69,8 +69,8 @@
 int main(int argc, char *argv[]) {
   char* variant;
 
-  AB_TYPE *D, *F, *DT, *FB, *DEXT, *Ac, *Ctmp, *Ac_blis, *Bc_blis;
-  C_TYPE *Y, *Yg, alphap, betap;
+  AB_TYPE *D, *F, *DT, *FB, *DEXT, *Ac, *Ac_blis, *Bc_blis;
+  C_TYPE *Y, *Yg, *Ctmp, alphap, betap;
   
   size_t mc_blis, nc_blis, kc_blis;
 
@@ -128,11 +128,18 @@ int main(int argc, char *argv[]) {
   load_model_level_params(argv[13], params);
   
   UK_TYPE uk;
+  UK_EDGE_TYPE uk_edge;
 
   #ifdef FP32
     UK_TYPE      *uk_vec      = new_uk_asm_selector_fp32();
     UK_EDGE_TYPE *uk_edge_vec = new_uk_asm_edge_selector_fp32();
-  #elif INT8_INT32
+  #elif FP16
+    UK_TYPE      *uk_vec      = new_uk_intrinsic_selector_fp16();
+    UK_EDGE_TYPE *uk_edge_vec = NULL;
+  #elif INT8_INT32_U8
+    UK_TYPE      *uk_vec      = new_uk_intrinsic_selector_int8_int32();
+    UK_EDGE_TYPE *uk_edge_vec = NULL;
+  #elif INT8_INT32_S8
     UK_TYPE      *uk_vec      = new_uk_intrinsic_selector_int8_int32();
     UK_EDGE_TYPE *uk_edge_vec = NULL;
   #else
@@ -172,16 +179,14 @@ int main(int argc, char *argv[]) {
     errorthd = 1.0e-3;
   #elif defined(FP32)
     errorthd = 1.0e-5;
-  #elif defined(FP64)
-    errorthd = 1.0e-14;
-  #elif defined(INT8_INT32)
+  #else
     errorthd = 1.0e-14;
   #endif
 
   fprintf(testConf->fd_csv, "l;WOB;COB;CIB;n;k;c;ho;wo;kh;kw;Time;GFLOPS;Error;MR;NR\n");    
 
   printf(" +==================================================================================================================+\n");
-  printf(" |%s                                        DRIVER FOR CONVOLUTION EVALUATION                                         %s|\n",
+  printf(" |%s                                        DRIVER FOR NHWC CONVOLUTION EVALUATION                                    %s|\n",
   COLOR_BOLDYELLOW, COLOR_RESET);
   printf(" +=========+===========================+======================================+==============================+======+\n");
   printf(" | %sMR   NR | WOB(MC)  COB(NC)  CIB(KC) |   n     k     c   ho    wo   (kh,kw) |  GFLOPS     Time     Error   | Test%s |\n",
@@ -208,7 +213,6 @@ int main(int argc, char *argv[]) {
     vdilation = 1;
     hdilation = 1;
 
-    wino_on = 1;
     if (r == 3) {h += 2; w += 2;}
 
     int m_gemm = k; 
@@ -224,32 +228,38 @@ int main(int argc, char *argv[]) {
     nr_init  = testConf->NR;
 
     if (testConf->bestof=='T') {
-      mr_limit = 20;
-      nr_limit = 20;
-      mr_init  = 4;
-      nr_init  = 4;
+      #if FP32
+        mr_limit = 20;
+        nr_limit = 20;
+        mr_init  = 4;
+        nr_init  = 4;
+      #elif FP16
+        mr_limit = 40;
+        nr_limit = 40;
+        mr_init  = 4;
+        nr_init  = 4;
+      #else
+        mr_limit = 24;
+        nr_limit = 24;
+        mr_init  = 8;
+        nr_init  = 4;
+      #endif
     }
 
 
     best_error=0.0; best_flops=0.0; best_time = 0.0;
-    for (mr_iter=mr_init; mr_iter < mr_limit + 1; mr_iter+=4) {
-      for (nr_iter=nr_init; nr_iter < nr_limit + 1; nr_iter+=4) {
+
+    for (mr_iter=mr_init; mr_iter < mr_limit + 1; mr_iter+=mr_init) {
+      for (nr_iter=nr_init; nr_iter < nr_limit + 1; nr_iter+=nr_init) {
 
         MR = mr_iter;
         NR = nr_iter;
-  
-        #ifdef FP32
-        if (strcmp("CONVDIRECT", ALG)==0)
-          uk_asm_selector_fp32(NR, MR, uk_vec, &uk);
-	else
-          uk_asm_selector_fp32(MR, NR, uk_vec, &uk);
-        #elif INT8_INT32
-        if (strcmp("CONVDIRECT", ALG)==0)
-          uk_intrinsic_selector_int8_int32(NR, MR, uk_vec, &uk);
-	else
-          uk_intrinsic_selector_int8_int32(MR, NR, uk_vec, &uk);
-        #endif
 
+        if (strcmp("CONVDIRECT", ALG)==0)
+	  fselector(NR, MR, uk_vec, uk_edge_vec, &uk, &uk_edge);
+	else
+	  fselector(MR, NR, uk_vec, uk_edge_vec, &uk, &uk_edge);
+  
 	if (uk == NULL) continue;
 
         if (strcmp("LOWERING", ALG)==0 || strcmp("CONVGEMM", ALG)==0) {
@@ -298,8 +308,7 @@ int main(int argc, char *argv[]) {
           
         Ctmp = (C_TYPE *)malloc(TH * MR  * NR *sizeof(C_TYPE));
     
-        if ( testConf->test=='T' )
-          Yg = (C_TYPE *) malloc( n*k*h*w*sizeof(C_TYPE) );   
+        Yg = (C_TYPE *) malloc( n*k*h*w*sizeof(C_TYPE) );   
           
         Ci_Cib = (int)ceil(((float) c)/CIB);
         Co_Cob = (int)ceil(((float) k)/COB);
@@ -327,23 +336,19 @@ int main(int argc, char *argv[]) {
         generate_tensor4D( c, r, s, k, F, ldF1, ldF2, ldF3 );
 
         // Set result to zeros
-        for ( in=0; in<n; in++ )
-        for ( ik=0; ik<k; ik++ )
-        for ( ih=0; ih<ho; ih++ )
-        for ( iw=0; iw<wo; iw++ ) {
-          if (tformat == NHWC)
-            Yrow_NHWC(in,ik,ih,iw) = 0.0;
-          else
-            Yrow_NCHW(in,ik,ih,iw) = 0.0;
-          if ( testConf->test=='T' )
-            if (tformat == NHWC)
-	      Ygrow_NHWC(in,ik,ih,iw) = 0.0;
-	    else
-	      Ygrow_NCHW(in,ik,ih,iw) = 0.0;
-         }
+	for (int i=0; i < n * k * ho * wo; i++) { Y[i]=0; Yg[i]=0; }
+
          if ( testConf->debug=='T' ) {
-             print_tensor4D( "D", n, h, w, c, D, ldD1, ldD2, ldD3 );
-             print_tensor4D( "F", c, r, s, k, F, ldF1, ldF2, ldF3 );
+	   #ifdef FP32
+             print_tensor4D_fp32( "D", n, h, w, c, D, ldD1, ldD2, ldD3 );
+             print_tensor4D_fp32( "F", c, r, s, k, F, ldF1, ldF2, ldF3 );
+	   #elif FP16
+             print_tensor4D_fp16( "D", n, h, w, c, D, ldD1, ldD2, ldD3 );
+             print_tensor4D_fp16( "F", c, r, s, k, F, ldF1, ldF2, ldF3 );
+           #else
+             print_tensor4D_int8( "D", n, h, w, c, D, ldD1, ldD2, ldD3 );
+             print_tensor4D_int8( "F", c, r, s, k, F, ldF1, ldF2, ldF3 );
+           #endif
          }
     
         if (strcmp("CONVDIRECT", ALG)==0)
@@ -368,17 +373,17 @@ int main(int argc, char *argv[]) {
 	    ldc = k;
   
             if (strcmp("BLIS", GEMM)==0) {
-	      #ifdef ENABLE_BLIS
+	      #if defined(ENABLE_BLIS) && defined(FP32)
 	        sgemm_( "N", "N", &mm, &nn, &kk, &alphap, F, &lda, DEXT, &ldb, &betap, Y, &ldc );
 	      #else
-		printf("ERROR: BLIS Enabled but not compiled.\n"); exit(-1);
+		printf("ERROR: BLIS unsupported for this data type.\n"); exit(-1);
               #endif
 	    } else if (strcmp("OPENBLAS", GEMM)==0) {
-              #ifdef ENABLE_OPENBLAS
+              #if defined(ENABLE_OPENBLAS) &&  defined(FP32)
 	        cblas_sgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, 
 		            mm, nn, kk, alphap, F, lda, DEXT, ldb, betap, Y, ldc);
 	      #else
-		printf("ERROR: OPENBLAS Enabled but not compiled.\n"); exit(-1);
+		printf("ERROR: OPENBLAS unsupported for this data type.\n"); exit(-1);
               #endif
 	    } else if (strcmp("B3A2C0", GEMM)==0) {
               gemm_blis_B3A2C0( 'C', 'C', 'C', 'N', 'N', mm, nn, kk, 
@@ -442,20 +447,14 @@ int main(int argc, char *argv[]) {
           error = 0.0;
           nrm   = 0.0;
           for ( in=0; in<n; in++ )
-          for ( ik=0; ik<k; ik++ )
           for ( ih=0; ih<ho; ih++ )
-          for ( iw=0; iw<wo; iw++ ) {
-            if (tformat == NHWC) {
-              tmp = (double) Ygrow_NHWC(in,ik,ih,iw);
-              nrm += tmp*tmp;
-              tmp = (double) dabs(Yrow_NHWC(in,ik,ih,iw)-Ygrow_NHWC(in,ik,ih,iw));
-              error += tmp*tmp;
-            } else {
-              tmp = (double) Ygrow_NCHW(in,ik,ih,iw);
-              nrm += tmp*tmp;
-              tmp = (double) dabs(Yrow_NCHW(in,ik,ih,iw)-Ygrow_NCHW(in,ik,ih,iw));	  
-	      error += tmp*tmp;
-	    }
+          for ( iw=0; iw<wo; iw++ )
+          for ( ik=0; ik<k; ik++ ) {
+            tmp = (double) Ygrow_NHWC(in,ik,ih,iw);
+            nrm += tmp*tmp;
+            tmp = (double) dabs(Yrow_NHWC(in,ik,ih,iw)-Ygrow_NHWC(in,ik,ih,iw));
+            //printf("[%d, %d, %d, %d], Y=%d - Yg=%d\n", in, ik, ih, iw, Yrow_NHWC(in,ik,ih,iw), Ygrow_NHWC(in,ik,ih,iw));
+	    error += tmp*tmp;
           }
           if ( nrm!=0.0 )
             error = sqrt(error) / sqrt(nrm);
@@ -468,23 +467,20 @@ int main(int argc, char *argv[]) {
         GFLOPS  = flops / (1.0e+9 * time );
 	    
         if ( testConf->debug=='T' ) {
-          if ( tformat == NCHW ) {
-            print_tensor4D( "Ytest", n, k, h, w, Y, ldY1, ldY2, ldY3 );
-            print_tensor4D( "Ycorrect", n, k, h, w, Yg, ldY1, ldY2, ldY3 );
-          } else {
-            print_tensor4D( "Ytest", n, h, w, k, Y, ldY1, ldY2, ldY3 );
-            print_tensor4D( "Ycorrect", n, h, w, k, Yg, ldY1, ldY2, ldY3 );
-          }
+	  #ifdef FP32
+            print_tensor4D_fp32( "Ytest", n, h, w, k, Y, ldY1, ldY2, ldY3 );
+            print_tensor4D_fp32( "Ycorrect", n, h, w, k, Yg, ldY1, ldY2, ldY3 );
+	  #elif INT32
+            print_tensor4D_int32( "Ytest", n, h, w, k, Y, ldY1, ldY2, ldY3 );
+            print_tensor4D_int32( "Ycorrect", n, h, w, k, Yg, ldY1, ldY2, ldY3 );
+          #endif
         }
 	
-	if (!wino_on)
-          printf(" | -    -  |   -         -        -    | %3d %5d %5d %5d %5d   (%1d,%1d)  |     -         -        -     |", n, k, c, ho, wo, r, s);
-	else {
           if (strcmp("LOWERING", ALG)==0  && (strcmp("BLIS", GEMM)==0 || strcmp("OPENBLAS", GEMM)==0))
             printf(" | -    -  |   -         -        -    | %3d %5d %5d %5d %5d   (%1d,%1d)  | %s%-10.2e%s %-8.1e %8.1e |", n, k, c, ho, wo, r, s, COLOR_BOLDMAGENTA, GFLOPS, COLOR_RESET, time, error);
 	  else
             printf(" | %-3d  %-2d | %-8d %-8d %-8d| %3d %5d %5d %5d %5d   (%1d,%1d)  | %s%-10.2e%s %-8.1e %8.1e |", MR, NR, WOB, COB, CIB,  n, k, c, ho, wo, r, s, COLOR_BOLDMAGENTA, GFLOPS, COLOR_RESET, time, error);
-	}
+	
 
 	if (GFLOPS > best_flops) {
 	  best_error = error;
@@ -497,7 +493,7 @@ int main(int argc, char *argv[]) {
 	  best_WOB   = WOB;
 	}
 	
-        if ( testConf->test=='T' && wino_on)
+        if ( testConf->test=='T')
           if ( error < errorthd)
             printf("  %sOK%s  |", COLOR_GREEN, COLOR_RESET);
           else
@@ -506,7 +502,6 @@ int main(int argc, char *argv[]) {
           printf("  %s-%s   |", COLOR_BOLDYELLOW, COLOR_RESET);
     
         printf("\n");
-    
     
         if (strcmp("LOWERING", ALG)==0 || strcmp("CONVGEMM", ALG)==0) {
           free(Ac_blis); 
@@ -521,12 +516,11 @@ int main(int argc, char *argv[]) {
         free(Y);
         free(D);
         free(F);
-          
-        if ( testConf->test=='T' ) 
-          free(Yg);
+        free(Yg);
     
       }
     }
+
     if (testConf->bestof=='T') {
       printf(" +---------+---------------------------+--------------------------------------+------------------------------+------+\n");
       printf(" | %s%-3d  %-2d | %-8d %-8d %-8d| %3d %5d %5d %5d %5d   (%1d,%1d)  | %s%-10.2e%s %-8.1e %8.1e %s|", COLOR_BOLDWHITE, best_mr, best_nr, best_WOB, best_COB, best_CIB,  n, k, c, ho, wo, r, s, COLOR_BOLDWHITE, best_flops, COLOR_RESET, best_time, best_error, COLOR_RESET);

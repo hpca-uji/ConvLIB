@@ -9,8 +9,12 @@ FLAGS=-O3 -DCHECK
 
 ifeq ($(DTYPE), FP32)
     FLAGS += -DFP32
-else
-    FLAGS += -DINT8_INT32
+else ifeq ($(DTYPE), FP16)
+    FLAGS += -DFP16
+else ifeq ($(DTYPE), INT8_INT32_U8)
+    FLAGS += -DINT8_INT32_U8
+else ifeq ($(DTYPE), INT8_INT32_S8)
+    FLAGS += -DINT8_INT32_S8
 endif
 
 ifneq ($(MAKECMDGOALS),clean)
