@@ -137,10 +137,10 @@ int main(int argc, char *argv[]) {
     UK_TYPE      *uk_vec      = new_uk_intrinsic_selector_fp16();
     UK_EDGE_TYPE *uk_edge_vec = NULL;
   #elif INT8_INT32_U8
-    UK_TYPE      *uk_vec      = new_uk_intrinsic_selector_int8_int32();
+    UK_TYPE      *uk_vec      = new_uk_intrinsic_selector_int8_int32_u8();
     UK_EDGE_TYPE *uk_edge_vec = NULL;
   #elif INT8_INT32_S8
-    UK_TYPE      *uk_vec      = new_uk_intrinsic_selector_int8_int32();
+    UK_TYPE      *uk_vec      = new_uk_intrinsic_selector_int8_int32_s8();
     UK_EDGE_TYPE *uk_edge_vec = NULL;
   #else
     printf("ERROR: Type unsupported\n");

@@ -2,6 +2,7 @@
 
 #define Ccol(a1,a2)  Cr[ (a2)*(ldC)+(a1) ]
 
+void ukernel_intrinsic_vmull_16x8_ux2_int8_int32(int kc, int8_t  *Ar, int8_t *Br, int32_t *Cr, int32_t beta, int ldC);
 
 
 void fselector(int MR, int NR, UK_TYPE *uk_vec, UK_EDGE_TYPE *uk_edge_vec, UK_TYPE *uk, UK_EDGE_TYPE *uk_edge) {
@@ -13,10 +14,10 @@ void fselector(int MR, int NR, UK_TYPE *uk_vec, UK_EDGE_TYPE *uk_edge_vec, UK_TY
     uk_intrinsic_selector_fp16(MR, NR, uk_vec, uk);
     *uk_edge = *uk;
   #elif INT8_INT32_U8
-    uk_intrinsic_selector_int8_int32(MR, NR, uk_vec, uk);
+    uk_intrinsic_selector_int8_int32_u8(MR, NR, uk_vec, uk);
     *uk_edge = *uk;
   #elif INT8_INT32_S8
-    uk_intrinsic_selector_int8_int32(MR, NR, uk_vec, uk);
+    uk_intrinsic_selector_int8_int32_s8(MR, NR, uk_vec, uk);
     *uk_edge = *uk;
   #endif
 
@@ -32,6 +33,7 @@ void generic_microkernel(int mr, int nr, int MR, int NR, AB_TYPE *A, AB_TYPE *B,
     else
       uk_edge(mr, nr, MR, NR, kc, &alpha, A, B, &beta, aux, C, ldC);
   #else
+    //uk = ukernel_intrinsic_vmull_16x8_ux2_int8_int32;
     if ((mr == MR) && (nr == NR))
       uk(kc, A, B, C, beta, ldC);
     else {
@@ -50,7 +52,519 @@ void generic_microkernel(int mr, int nr, int MR, int NR, AB_TYPE *A, AB_TYPE *B,
 //============================================================================================================
 //============================================================================================================
 
+void ukernel_intrinsic_vmull_16x8_ux2_int8_int32(int kc, int8_t  *Ar, int8_t *Br, int32_t *Cr, int32_t beta, int ldC) {
+  //BLIS GEMM microkernel, computes the product Cr := Cr + Ar * Br
+  //Update micro-tile of C: MR=16 x NR=4
 
+  int i, j, k, baseA, baseB, Amr, Bnr;
+  int zero = 0, one = 1, *Aptr, *Bptr;
+
+  int32x4_t C00, C01, C02, C03, C04, C05, C06, C07,
+	    C10, C11, C12, C13, C14, C15, C16, C17,
+	    C20, C21, C22, C23, C24, C25, C26, C27,
+	    C30, C31, C32, C33, C34, C35, C36, C37;
+
+  int8x16_t _A, _An;
+  int8x8_t  A0, A1, A0n, A1n, B, Bn;
+
+  int16x8_t VM;
+
+  if ( kc==0 ) return;
+
+  if (beta==zero) {
+    C00 = vmovq_n_s32(0); 
+    C01 = vmovq_n_s32(0); 
+    C02 = vmovq_n_s32(0); 
+    C03 = vmovq_n_s32(0);
+    C04 = vmovq_n_s32(0); 
+    C05 = vmovq_n_s32(0);
+    C06 = vmovq_n_s32(0); 
+    C07 = vmovq_n_s32(0);
+
+    C10 = vmovq_n_s32(0); 
+    C11 = vmovq_n_s32(0); 
+    C12 = vmovq_n_s32(0); 
+    C13 = vmovq_n_s32(0);
+    C14 = vmovq_n_s32(0); 
+    C15 = vmovq_n_s32(0);
+    C16 = vmovq_n_s32(0); 
+    C17 = vmovq_n_s32(0);
+
+    C20 = vmovq_n_s32(0); 
+    C21 = vmovq_n_s32(0); 
+    C22 = vmovq_n_s32(0); 
+    C23 = vmovq_n_s32(0);
+    C24 = vmovq_n_s32(0); 
+    C25 = vmovq_n_s32(0);
+    C26 = vmovq_n_s32(0); 
+    C27 = vmovq_n_s32(0);
+
+    C30 = vmovq_n_s32(0); 
+    C31 = vmovq_n_s32(0); 
+    C32 = vmovq_n_s32(0); 
+    C33 = vmovq_n_s32(0);
+    C34 = vmovq_n_s32(0); 
+    C35 = vmovq_n_s32(0);
+    C36 = vmovq_n_s32(0); 
+    C37 = vmovq_n_s32(0);
+  } else {
+    C00 = vld1q_s32(&Ccol(0,0));  
+    C01 = vld1q_s32(&Ccol(0,1));  
+    C02 = vld1q_s32(&Ccol(0,2));  
+    C03 = vld1q_s32(&Ccol(0,3));
+    C04 = vld1q_s32(&Ccol(0,4));  
+    C05 = vld1q_s32(&Ccol(0,5));
+    C06 = vld1q_s32(&Ccol(0,6));  
+    C07 = vld1q_s32(&Ccol(0,7));
+
+    C10 = vld1q_s32(&Ccol(4,0));  
+    C11 = vld1q_s32(&Ccol(4,1));  
+    C12 = vld1q_s32(&Ccol(4,2));  
+    C13 = vld1q_s32(&Ccol(4,3));
+    C14 = vld1q_s32(&Ccol(4,4));  
+    C15 = vld1q_s32(&Ccol(4,5));
+    C16 = vld1q_s32(&Ccol(4,6));  
+    C17 = vld1q_s32(&Ccol(4,7));
+
+    C20 = vld1q_s32(&Ccol(8,0));  
+    C21 = vld1q_s32(&Ccol(8,1));  
+    C22 = vld1q_s32(&Ccol(8,2));  
+    C23 = vld1q_s32(&Ccol(8,3));
+    C24 = vld1q_s32(&Ccol(8,4));  
+    C25 = vld1q_s32(&Ccol(8,5));
+    C26 = vld1q_s32(&Ccol(8,6));  
+    C27 = vld1q_s32(&Ccol(8,7));
+
+    C30 = vld1q_s32(&Ccol(12,0)); 
+    C31 = vld1q_s32(&Ccol(12,1)); 
+    C32 = vld1q_s32(&Ccol(12,2)); 
+    C33 = vld1q_s32(&Ccol(12,3));
+    C34 = vld1q_s32(&Ccol(12,4));  
+    C35 = vld1q_s32(&Ccol(12,5));
+    C36 = vld1q_s32(&Ccol(12,6));  
+    C37 = vld1q_s32(&Ccol(12,7));
+  }
+
+  baseA = 0;
+  baseB = 0;
+
+  // Iterate from 0 to kc, in steps of 2
+  // his loop can be unrolled in a larger factor to reduce the cost of vdup
+  for ( k=0; k<kc-1; k+=2 ) {
+    _A = vld1q_s8(&Ar[baseA]);
+    A0 = vget_low_s8 (_A);
+    A1 = vget_high_s8(_A);
+
+    _An = vld1q_s8(&Ar[baseA+16]);
+    A0n = vget_low_s8 (_An);
+    A1n = vget_high_s8(_An);
+
+    B  = vdup_n_s8(Br[baseB+0]);
+    Bn = vdup_n_s8(Br[baseB+8]);
+    VM = vmull_s8(A0, B);
+    VM = vmlal_s8(VM, A0n, Bn);
+    C00 = vaddq_s32(C00, vmovl_s16(vget_low_s16 (VM)));
+    C10 = vaddq_s32(C10, vmovl_s16(vget_high_s16(VM)));
+    VM = vmull_s8(A1, B);
+    VM = vmlal_s8(VM, A1n, Bn);
+    C20 = vaddq_s32(C20, vmovl_s16(vget_low_s16 (VM)));
+    C30 = vaddq_s32(C30, vmovl_s16(vget_high_s16(VM)));
+
+
+    B  = vdup_n_s8(Br[baseB+1]);
+    Bn = vdup_n_s8(Br[baseB+9]);
+    VM = vmull_s8(A0, B);
+    VM = vmlal_s8(VM, A0n, Bn);
+    C01 = vaddq_s32(C01, vmovl_s16(vget_low_s16 (VM)));
+    C11 = vaddq_s32(C11, vmovl_s16(vget_high_s16(VM)));
+    VM = vmull_s8(A1, B);
+    VM = vmlal_s8(VM, A1n, Bn);
+    C21 = vaddq_s32(C21, vmovl_s16(vget_low_s16 (VM)));
+    C31 = vaddq_s32(C31, vmovl_s16(vget_high_s16(VM)));
+   
+
+    B  = vdup_n_s8(Br[baseB+2]);
+    Bn = vdup_n_s8(Br[baseB+10]);
+    VM = vmull_s8(A0, B);
+    VM = vmlal_s8(VM, A0n, Bn);
+    C02 = vaddq_s32(C02, vmovl_s16(vget_low_s16 (VM)));
+    C12 = vaddq_s32(C12, vmovl_s16(vget_high_s16(VM)));
+    VM = vmull_s8(A1, B);
+    VM = vmlal_s8(VM, A1n, Bn);
+    C22 = vaddq_s32(C22, vmovl_s16(vget_low_s16 (VM)));
+    C32 = vaddq_s32(C32, vmovl_s16(vget_high_s16(VM)));
+   
+
+    B  = vdup_n_s8(Br[baseB+3]);
+    Bn = vdup_n_s8(Br[baseB+11]);
+    VM = vmull_s8(A0, B);
+    VM = vmlal_s8(VM, A0n, Bn);
+    C03 = vaddq_s32(C03, vmovl_s16(vget_low_s16 (VM)));
+    C13 = vaddq_s32(C13, vmovl_s16(vget_high_s16(VM)));
+    VM = vmull_s8(A1, B);
+    VM = vmlal_s8(VM, A1n, Bn);
+    C23 = vaddq_s32(C23, vmovl_s16(vget_low_s16 (VM)));
+    C33 = vaddq_s32(C33, vmovl_s16(vget_high_s16(VM)));
+
+
+    B  = vdup_n_s8(Br[baseB+4]);
+    Bn = vdup_n_s8(Br[baseB+12]);
+    VM = vmull_s8(A0, B);
+    VM = vmlal_s8(VM, A0n, Bn);
+    C04 = vaddq_s32(C04, vmovl_s16(vget_low_s16 (VM)));
+    C14 = vaddq_s32(C14, vmovl_s16(vget_high_s16(VM)));
+    VM = vmull_s8(A1, B);
+    VM = vmlal_s8(VM, A1n, Bn);
+    C24 = vaddq_s32(C24, vmovl_s16(vget_low_s16 (VM)));
+    C34 = vaddq_s32(C34, vmovl_s16(vget_high_s16(VM)));
+    
+    
+    B  = vdup_n_s8(Br[baseB+5]);
+    Bn = vdup_n_s8(Br[baseB+13]);
+    VM = vmull_s8(A0, B);
+    VM = vmlal_s8(VM, A0n, Bn);
+    C05 = vaddq_s32(C05, vmovl_s16(vget_low_s16 (VM)));
+    C15 = vaddq_s32(C15, vmovl_s16(vget_high_s16(VM)));
+    VM = vmull_s8(A1, B);
+    VM = vmlal_s8(VM, A1n, Bn);
+    C25 = vaddq_s32(C25, vmovl_s16(vget_low_s16 (VM)));
+    C35 = vaddq_s32(C35, vmovl_s16(vget_high_s16(VM)));
+    
+    B  = vdup_n_s8(Br[baseB+6]);
+    Bn = vdup_n_s8(Br[baseB+14]);
+    VM = vmull_s8(A0, B);
+    VM = vmlal_s8(VM, A0n, Bn);
+    C06 = vaddq_s32(C06, vmovl_s16(vget_low_s16 (VM)));
+    C16 = vaddq_s32(C16, vmovl_s16(vget_high_s16(VM)));
+    VM = vmull_s8(A1, B);
+    VM = vmlal_s8(VM, A1n, Bn);
+    C26 = vaddq_s32(C26, vmovl_s16(vget_low_s16 (VM)));
+    C36 = vaddq_s32(C36, vmovl_s16(vget_high_s16(VM)));
+
+    B  = vdup_n_s8(Br[baseB+7]);
+    Bn = vdup_n_s8(Br[baseB+15]);
+    VM = vmull_s8(A0, B);
+    VM = vmlal_s8(VM, A0n, Bn);
+    C07 = vaddq_s32(C07, vmovl_s16(vget_low_s16 (VM)));
+    C17 = vaddq_s32(C17, vmovl_s16(vget_high_s16(VM)));
+    VM = vmull_s8(A1, B);
+    VM = vmlal_s8(VM, A1n, Bn);
+    C27 = vaddq_s32(C27, vmovl_s16(vget_low_s16 (VM)));
+    C37 = vaddq_s32(C37, vmovl_s16(vget_high_s16(VM)));
+    
+    baseA = baseA + 32; 
+    baseB = baseB + 16;
+  }
+  
+
+  // Last iteration if kc is an odd number
+  if ((kc%2) != 0) {
+    //Load A
+    _A  = vld1q_s8(&Ar[baseA]);
+    A0 = vget_low_s8 (_A);
+    A1 = vget_high_s8(_A);
+
+    //Load B
+    B  = vdup_n_s8(Br[baseB+0]); 
+    VM  = vmull_s8(A0, B);
+    C00 = vaddq_s32(C00, vmovl_s16(vget_low_s16 (VM)));
+    C10 = vaddq_s32(C10, vmovl_s16(vget_high_s16(VM)));
+    VM  = vmull_s8(A1, B);
+    C20 = vaddq_s32(C20, vmovl_s16(vget_low_s16 (VM)));
+    C30 = vaddq_s32(C30, vmovl_s16(vget_high_s16(VM)));
+
+    B  = vdup_n_s8(Br[baseB+1]); 
+    VM  = vmull_s8(A0, B);
+    C01 = vaddq_s32(C01, vmovl_s16(vget_low_s16 (VM)));
+    C11 = vaddq_s32(C11, vmovl_s16(vget_high_s16(VM)));
+    VM  = vmull_s8(A1, B);
+    C21 = vaddq_s32(C21, vmovl_s16(vget_low_s16 (VM)));
+    C31 = vaddq_s32(C31, vmovl_s16(vget_high_s16(VM)));
+
+    B  = vdup_n_s8(Br[baseB+2]); 
+    VM  = vmull_s8(A0, B);
+    C02 = vaddq_s32(C02, vmovl_s16(vget_low_s16 (VM)));
+    C12 = vaddq_s32(C12, vmovl_s16(vget_high_s16(VM)));
+    VM  = vmull_s8(A1, B);
+    C22 = vaddq_s32(C22, vmovl_s16(vget_low_s16 (VM)));
+    C32 = vaddq_s32(C32, vmovl_s16(vget_high_s16(VM)));
+
+    B  = vdup_n_s8(Br[baseB+3]); 
+    VM  = vmull_s8(A0, B);
+    C03 = vaddq_s32(C03, vmovl_s16(vget_low_s16 (VM)));
+    C13 = vaddq_s32(C13, vmovl_s16(vget_high_s16(VM)));
+    VM  = vmull_s8(A1, B);
+    C23 = vaddq_s32(C23, vmovl_s16(vget_low_s16 (VM)));
+    C33 = vaddq_s32(C33, vmovl_s16(vget_high_s16(VM)));
+    
+    B  = vdup_n_s8(Br[baseB+4]); 
+    VM  = vmull_s8(A0, B);
+    C04 = vaddq_s32(C04, vmovl_s16(vget_low_s16 (VM)));
+    C14 = vaddq_s32(C14, vmovl_s16(vget_high_s16(VM)));
+    VM  = vmull_s8(A1, B);
+    C24 = vaddq_s32(C24, vmovl_s16(vget_low_s16 (VM)));
+    C34 = vaddq_s32(C34, vmovl_s16(vget_high_s16(VM)));
+    
+    B  = vdup_n_s8(Br[baseB+5]); 
+    VM  = vmull_s8(A0, B);
+    C05 = vaddq_s32(C05, vmovl_s16(vget_low_s16 (VM)));
+    C15 = vaddq_s32(C15, vmovl_s16(vget_high_s16(VM)));
+    VM  = vmull_s8(A1, B);
+    C25 = vaddq_s32(C25, vmovl_s16(vget_low_s16 (VM)));
+    C35 = vaddq_s32(C35, vmovl_s16(vget_high_s16(VM)));
+    
+    B  = vdup_n_s8(Br[baseB+6]); 
+    VM  = vmull_s8(A0, B);
+    C06 = vaddq_s32(C06, vmovl_s16(vget_low_s16 (VM)));
+    C16 = vaddq_s32(C16, vmovl_s16(vget_high_s16(VM)));
+    VM  = vmull_s8(A1, B);
+    C26 = vaddq_s32(C26, vmovl_s16(vget_low_s16 (VM)));
+    C36 = vaddq_s32(C36, vmovl_s16(vget_high_s16(VM)));
+    
+    B  = vdup_n_s8(Br[baseB+7]); 
+    VM  = vmull_s8(A0, B);
+    C07 = vaddq_s32(C07, vmovl_s16(vget_low_s16 (VM)));
+    C17 = vaddq_s32(C17, vmovl_s16(vget_high_s16(VM)));
+    VM  = vmull_s8(A1, B);
+    C27 = vaddq_s32(C27, vmovl_s16(vget_low_s16 (VM)));
+    C37 = vaddq_s32(C37, vmovl_s16(vget_high_s16(VM)));
+  }
+
+
+  vst1q_s32(&Ccol(0,0), C00);
+  vst1q_s32(&Ccol(0,1), C01);
+  vst1q_s32(&Ccol(0,2), C02);
+  vst1q_s32(&Ccol(0,3), C03);
+  vst1q_s32(&Ccol(0,4), C04);
+  vst1q_s32(&Ccol(0,5), C05);
+  vst1q_s32(&Ccol(0,6), C06);
+  vst1q_s32(&Ccol(0,7), C07);
+
+  vst1q_s32(&Ccol(4,0), C10);
+  vst1q_s32(&Ccol(4,1), C11);
+  vst1q_s32(&Ccol(4,2), C12);
+  vst1q_s32(&Ccol(4,3), C13);
+  vst1q_s32(&Ccol(4,4), C14);
+  vst1q_s32(&Ccol(4,5), C15);
+  vst1q_s32(&Ccol(4,6), C16);
+  vst1q_s32(&Ccol(4,7), C17);
+    
+    
+  vst1q_s32(&Ccol(8,0), C20);
+  vst1q_s32(&Ccol(8,1), C21);
+  vst1q_s32(&Ccol(8,2), C22);
+  vst1q_s32(&Ccol(8,3), C23);
+  vst1q_s32(&Ccol(8,4), C24);
+  vst1q_s32(&Ccol(8,5), C25);
+  vst1q_s32(&Ccol(8,6), C26);
+  vst1q_s32(&Ccol(8,7), C27);
+    
+  
+  vst1q_s32(&Ccol(12,0), C30);
+  vst1q_s32(&Ccol(12,1), C31);
+  vst1q_s32(&Ccol(12,2), C32);
+  vst1q_s32(&Ccol(12,3), C33);
+  vst1q_s32(&Ccol(12,4), C34);
+  vst1q_s32(&Ccol(12,5), C35);
+  vst1q_s32(&Ccol(12,6), C36);
+  vst1q_s32(&Ccol(12,7), C37);
+    
+
+
+}
+
+/*
+void ukernel_intrinsic_16x8_int8_int32_s8(int kc, int8_t  *Ar, int8_t *Br, int32_t *Cr, int32_t beta, int ldC) {
+  //BLIS GEMM microkernel, computes the product Cr := Cr + Ar * Br
+  //Update micro-tile of C: MR=16 x NR=4
+
+  int i, j, k, baseA, baseB, Amr, Bnr;
+  int zero = 0, one = 1, *Aptr, *Bptr;
+
+  int32x4_t C00, C01, C02, C03, C04, C05, C06, C07, //
+	    C10, C11, C12, C13, C14, C15, C16, C17, //
+	    C20, C21, C22, C23, C24, C25, C26, C27, //
+	    C30, C31, C32, C33, C34, C35, C36, C37; //+32
+
+  int16x8_t  A0, A1;
+  int16x4_t  A0low, A1low;
+  int16x8_t  B0;
+
+  if ( kc==0 ) return;
+
+  if (beta==zero) {
+    C00 = vmovq_n_s32(0); 
+    C01 = vmovq_n_s32(0); 
+    C02 = vmovq_n_s32(0); 
+    C03 = vmovq_n_s32(0);
+    C04 = vmovq_n_s32(0); 
+    C05 = vmovq_n_s32(0); 
+    C06 = vmovq_n_s32(0); 
+    C07 = vmovq_n_s32(0);
+
+    C10 = vmovq_n_s32(0); 
+    C11 = vmovq_n_s32(0); 
+    C12 = vmovq_n_s32(0); 
+    C13 = vmovq_n_s32(0);
+    C14 = vmovq_n_s32(0); 
+    C15 = vmovq_n_s32(0); 
+    C16 = vmovq_n_s32(0); 
+    C17 = vmovq_n_s32(0);
+
+    C20 = vmovq_n_s32(0); 
+    C21 = vmovq_n_s32(0); 
+    C22 = vmovq_n_s32(0); 
+    C23 = vmovq_n_s32(0);
+    C24 = vmovq_n_s32(0); 
+    C25 = vmovq_n_s32(0); 
+    C26 = vmovq_n_s32(0); 
+    C27 = vmovq_n_s32(0);
+
+    C30 = vmovq_n_s32(0); 
+    C31 = vmovq_n_s32(0); 
+    C32 = vmovq_n_s32(0); 
+    C33 = vmovq_n_s32(0);
+    C34 = vmovq_n_s32(0); 
+    C35 = vmovq_n_s32(0); 
+    C36 = vmovq_n_s32(0); 
+    C37 = vmovq_n_s32(0);
+  } else {
+    C00 = vld1q_s32(&Ccol(0,0));  
+    C01 = vld1q_s32(&Ccol(0,1));  
+    C02 = vld1q_s32(&Ccol(0,2));  
+    C03 = vld1q_s32(&Ccol(0,3));
+    C04 = vld1q_s32(&Ccol(0,4));  
+    C05 = vld1q_s32(&Ccol(0,5));  
+    C06 = vld1q_s32(&Ccol(0,6));  
+    C07 = vld1q_s32(&Ccol(0,7));
+
+    C10 = vld1q_s32(&Ccol(4,0));  
+    C11 = vld1q_s32(&Ccol(4,1));  
+    C12 = vld1q_s32(&Ccol(4,2));  
+    C13 = vld1q_s32(&Ccol(4,3));
+    C14 = vld1q_s32(&Ccol(4,4));  
+    C15 = vld1q_s32(&Ccol(4,5));  
+    C16 = vld1q_s32(&Ccol(4,6));  
+    C17 = vld1q_s32(&Ccol(4,7));
+
+    C20 = vld1q_s32(&Ccol(8,0));  
+    C21 = vld1q_s32(&Ccol(8,1));  
+    C22 = vld1q_s32(&Ccol(8,2));  
+    C23 = vld1q_s32(&Ccol(8,3));
+    C24 = vld1q_s32(&Ccol(8,4));  
+    C25 = vld1q_s32(&Ccol(8,5));  
+    C26 = vld1q_s32(&Ccol(8,6));  
+    C27 = vld1q_s32(&Ccol(8,7));
+
+    C30 = vld1q_s32(&Ccol(12,0)); 
+    C31 = vld1q_s32(&Ccol(12,1)); 
+    C32 = vld1q_s32(&Ccol(12,2)); 
+    C33 = vld1q_s32(&Ccol(12,3));
+    C34 = vld1q_s32(&Ccol(12,4));  
+    C35 = vld1q_s32(&Ccol(12,5));  
+    C36 = vld1q_s32(&Ccol(12,6));  
+    C37 = vld1q_s32(&Ccol(12,7));
+  }
+
+  baseA = 0;
+  baseB = 0;
+
+  for ( k=0; k<kc; k++ ) {
+    A0 = vmovl_s8(vld1_s8(&Ar[baseA + 0])); //Load 8 elements from A #int8x8 ¿16?
+    A1 = vmovl_s8(vld1_s8(&Ar[baseA + 8])); //Load 8 elements from A #int8x8
+
+    B0 = vmovl_s8(vld1_s8(&Br[baseB])); //Load 8 elements from A #int8x8
+
+    A0low = vget_low_s16(A0);
+    A1low = vget_low_s16(A1);
+
+    C00 = vmlal_laneq_s16     (C00, A0low, B0, 0); 
+    C10 = vmlal_high_laneq_s16(C10, A0,    B0, 0);
+    C20 = vmlal_laneq_s16     (C20, A1low, B0, 0); 
+    C30 = vmlal_high_laneq_s16(C30, A1,    B0, 0);
+
+    C01 = vmlal_laneq_s16     (C01, A0low, B0, 1); 
+    C11 = vmlal_high_laneq_s16(C11, A0,    B0, 1);
+    C21 = vmlal_laneq_s16     (C21, A1low, B0, 1); 
+    C31 = vmlal_high_laneq_s16(C31, A1,    B0, 1);
+
+    C02 = vmlal_laneq_s16     (C02, A0low, B0, 2); 
+    C12 = vmlal_high_laneq_s16(C12, A0,    B0, 2);
+    C22 = vmlal_laneq_s16     (C22, A1low, B0, 2); 
+    C32 = vmlal_high_laneq_s16(C32, A1,    B0, 2);
+
+    C03 = vmlal_laneq_s16     (C03, A0low, B0, 3); 
+    C13 = vmlal_high_laneq_s16(C13, A0,    B0, 3);
+    C23 = vmlal_laneq_s16     (C23, A1low, B0, 3); 
+    C33 = vmlal_high_laneq_s16(C33, A1,    B0, 3);
+    
+    C04 = vmlal_laneq_s16     (C04, A0low, B0, 4); 
+    C14 = vmlal_high_laneq_s16(C14, A0,    B0, 4);
+    C24 = vmlal_laneq_s16     (C24, A1low, B0, 4); 
+    C34 = vmlal_high_laneq_s16(C34, A1,    B0, 4);
+    
+    C05 = vmlal_laneq_s16     (C05, A0low, B0, 5); 
+    C15 = vmlal_high_laneq_s16(C15, A0,    B0, 5);
+    C25 = vmlal_laneq_s16     (C25, A1low, B0, 5); 
+    C35 = vmlal_high_laneq_s16(C35, A1,    B0, 5);
+    
+    C06 = vmlal_laneq_s16     (C06, A0low, B0, 6); 
+    C16 = vmlal_high_laneq_s16(C16, A0,    B0, 6);
+    C26 = vmlal_laneq_s16     (C26, A1low, B0, 6); 
+    C36 = vmlal_high_laneq_s16(C36, A1,    B0, 6);
+    
+    C07 = vmlal_laneq_s16     (C07, A0low, B0, 7); 
+    C17 = vmlal_high_laneq_s16(C17, A0,    B0, 7);
+    C27 = vmlal_laneq_s16     (C27, A1low, B0, 7); 
+    C37 = vmlal_high_laneq_s16(C37, A1,    B0, 7);
+
+    //vr = vmlal_laneq_s16();      // int32x4_t = int32x4_t + int16x4_t * int16x8_t;
+    //vr = vmlal_high_laneq_s16(); // int32x4_t = int32x4_t + int16x8_t * int16x8_t
+
+    baseA = baseA + 16; 
+    baseB = baseB + 8;
+
+  }
+  
+  vst1q_s32(&Ccol(0,0), C00);
+  vst1q_s32(&Ccol(0,1), C01);
+  vst1q_s32(&Ccol(0,2), C02);
+  vst1q_s32(&Ccol(0,3), C03);
+  vst1q_s32(&Ccol(0,4), C04);
+  vst1q_s32(&Ccol(0,5), C05);
+  vst1q_s32(&Ccol(0,6), C06);
+  vst1q_s32(&Ccol(0,7), C07);
+
+  vst1q_s32(&Ccol(4,0), C10);
+  vst1q_s32(&Ccol(4,1), C11);
+  vst1q_s32(&Ccol(4,2), C12);
+  vst1q_s32(&Ccol(4,3), C13);
+  vst1q_s32(&Ccol(4,4), C14);
+  vst1q_s32(&Ccol(4,5), C15);
+  vst1q_s32(&Ccol(4,6), C16);
+  vst1q_s32(&Ccol(4,7), C17);
+    
+  vst1q_s32(&Ccol(8,0), C20);
+  vst1q_s32(&Ccol(8,1), C21);
+  vst1q_s32(&Ccol(8,2), C22);
+  vst1q_s32(&Ccol(8,3), C23);
+  vst1q_s32(&Ccol(8,4), C24);
+  vst1q_s32(&Ccol(8,5), C25);
+  vst1q_s32(&Ccol(8,6), C26);
+  vst1q_s32(&Ccol(8,7), C27);
+  
+  vst1q_s32(&Ccol(12,0), C30);
+  vst1q_s32(&Ccol(12,1), C31);
+  vst1q_s32(&Ccol(12,2), C32);
+  vst1q_s32(&Ccol(12,3), C33);
+  vst1q_s32(&Ccol(12,4), C34);
+  vst1q_s32(&Ccol(12,5), C35);
+  vst1q_s32(&Ccol(12,6), C36);
+  vst1q_s32(&Ccol(12,7), C37);
+
+
+ }
+*/
 void ukernel_intrinsic_vmlal_16x8_int8_int32(int kc, int8_t  *Ar, int8_t *Br, int32_t *Cr, int32_t beta, int ldC) {
   //BLIS GEMM microkernel, computes the product Cr := Cr + Ar * Br
   //Update micro-tile of C: MR=16 x NR=4
@@ -652,326 +1166,6 @@ void ukernel_intrinsic_vmull_16x4_ux2_int8_int32(int kc, int8_t  *Ar, int8_t *Br
 
 }
 
-void ukernel_intrinsic_vmull_16x8_ux2_int8_int32(int kc, int8_t  *Ar, int8_t *Br, int32_t *Cr, int32_t beta, int ldC) {
-  //BLIS GEMM microkernel, computes the product Cr := Cr + Ar * Br
-  //Update micro-tile of C: MR=16 x NR=4
-
-  int i, j, k, baseA, baseB, Amr, Bnr;
-  int zero = 0, one = 1, *Aptr, *Bptr;
-
-  int32x4_t C00, C01, C02, C03, C04, C05, C06, C07,
-	    C10, C11, C12, C13, C14, C15, C16, C17,
-	    C20, C21, C22, C23, C24, C25, C26, C27,
-	    C30, C31, C32, C33, C34, C35, C36, C37;
-
-  int8x16_t _A, _An;
-  int8x8_t  A0, A1, A0n, A1n, B, Bn;
-
-  int16x8_t VM;
-
-  if ( kc==0 ) return;
-
-  if (beta==zero) {
-    C00 = vmovq_n_s32(0); 
-    C01 = vmovq_n_s32(0); 
-    C02 = vmovq_n_s32(0); 
-    C03 = vmovq_n_s32(0);
-    C04 = vmovq_n_s32(0); 
-    C05 = vmovq_n_s32(0);
-    C06 = vmovq_n_s32(0); 
-    C07 = vmovq_n_s32(0);
-
-    C10 = vmovq_n_s32(0); 
-    C11 = vmovq_n_s32(0); 
-    C12 = vmovq_n_s32(0); 
-    C13 = vmovq_n_s32(0);
-    C14 = vmovq_n_s32(0); 
-    C15 = vmovq_n_s32(0);
-    C16 = vmovq_n_s32(0); 
-    C17 = vmovq_n_s32(0);
-
-    C20 = vmovq_n_s32(0); 
-    C21 = vmovq_n_s32(0); 
-    C22 = vmovq_n_s32(0); 
-    C23 = vmovq_n_s32(0);
-    C24 = vmovq_n_s32(0); 
-    C25 = vmovq_n_s32(0);
-    C26 = vmovq_n_s32(0); 
-    C27 = vmovq_n_s32(0);
-
-    C30 = vmovq_n_s32(0); 
-    C31 = vmovq_n_s32(0); 
-    C32 = vmovq_n_s32(0); 
-    C33 = vmovq_n_s32(0);
-    C34 = vmovq_n_s32(0); 
-    C35 = vmovq_n_s32(0);
-    C36 = vmovq_n_s32(0); 
-    C37 = vmovq_n_s32(0);
-  } else {
-    C00 = vld1q_s32(&Ccol(0,0));  
-    C01 = vld1q_s32(&Ccol(0,1));  
-    C02 = vld1q_s32(&Ccol(0,2));  
-    C03 = vld1q_s32(&Ccol(0,3));
-    C04 = vld1q_s32(&Ccol(0,4));  
-    C05 = vld1q_s32(&Ccol(0,5));
-    C06 = vld1q_s32(&Ccol(0,6));  
-    C07 = vld1q_s32(&Ccol(0,7));
-
-    C10 = vld1q_s32(&Ccol(4,0));  
-    C11 = vld1q_s32(&Ccol(4,1));  
-    C12 = vld1q_s32(&Ccol(4,2));  
-    C13 = vld1q_s32(&Ccol(4,3));
-    C14 = vld1q_s32(&Ccol(4,4));  
-    C15 = vld1q_s32(&Ccol(4,5));
-    C16 = vld1q_s32(&Ccol(4,6));  
-    C17 = vld1q_s32(&Ccol(4,7));
-
-    C20 = vld1q_s32(&Ccol(8,0));  
-    C21 = vld1q_s32(&Ccol(8,1));  
-    C22 = vld1q_s32(&Ccol(8,2));  
-    C23 = vld1q_s32(&Ccol(8,3));
-    C24 = vld1q_s32(&Ccol(8,4));  
-    C25 = vld1q_s32(&Ccol(8,5));
-    C26 = vld1q_s32(&Ccol(8,6));  
-    C27 = vld1q_s32(&Ccol(8,7));
-
-    C30 = vld1q_s32(&Ccol(12,0)); 
-    C31 = vld1q_s32(&Ccol(12,1)); 
-    C32 = vld1q_s32(&Ccol(12,2)); 
-    C33 = vld1q_s32(&Ccol(12,3));
-    C34 = vld1q_s32(&Ccol(12,4));  
-    C35 = vld1q_s32(&Ccol(12,5));
-    C36 = vld1q_s32(&Ccol(12,6));  
-    C37 = vld1q_s32(&Ccol(12,7));
-  }
-
-  baseA = 0;
-  baseB = 0;
-
-  // Iterate from 0 to kc, in steps of 2
-  // his loop can be unrolled in a larger factor to reduce the cost of vdup
-  for ( k=0; k<kc-1; k+=2 ) {
-    _A = vld1q_s8(&Ar[baseA]);
-    A0 = vget_low_s8 (_A);
-    A1 = vget_high_s8(_A);
-
-    _An = vld1q_s8(&Ar[baseA+16]);
-    A0n = vget_low_s8 (_An);
-    A1n = vget_high_s8(_An);
-
-    B  = vdup_n_s8(Br[baseB+0]);
-    Bn = vdup_n_s8(Br[baseB+8]);
-    VM = vmull_s8(A0, B);
-    VM = vmlal_s8(VM, A0n, Bn);
-    C00 = vaddq_s32(C00, vmovl_s16(vget_low_s16 (VM)));
-    C10 = vaddq_s32(C10, vmovl_s16(vget_high_s16(VM)));
-    VM = vmull_s8(A1, B);
-    VM = vmlal_s8(VM, A1n, Bn);
-    C20 = vaddq_s32(C20, vmovl_s16(vget_low_s16 (VM)));
-    C30 = vaddq_s32(C30, vmovl_s16(vget_high_s16(VM)));
-
-
-    B  = vdup_n_s8(Br[baseB+1]);
-    Bn = vdup_n_s8(Br[baseB+9]);
-    VM = vmull_s8(A0, B);
-    VM = vmlal_s8(VM, A0n, Bn);
-    C01 = vaddq_s32(C01, vmovl_s16(vget_low_s16 (VM)));
-    C11 = vaddq_s32(C11, vmovl_s16(vget_high_s16(VM)));
-    VM = vmull_s8(A1, B);
-    VM = vmlal_s8(VM, A1n, Bn);
-    C21 = vaddq_s32(C21, vmovl_s16(vget_low_s16 (VM)));
-    C31 = vaddq_s32(C31, vmovl_s16(vget_high_s16(VM)));
-   
-
-    B  = vdup_n_s8(Br[baseB+2]);
-    Bn = vdup_n_s8(Br[baseB+10]);
-    VM = vmull_s8(A0, B);
-    VM = vmlal_s8(VM, A0n, Bn);
-    C02 = vaddq_s32(C02, vmovl_s16(vget_low_s16 (VM)));
-    C12 = vaddq_s32(C12, vmovl_s16(vget_high_s16(VM)));
-    VM = vmull_s8(A1, B);
-    VM = vmlal_s8(VM, A1n, Bn);
-    C22 = vaddq_s32(C22, vmovl_s16(vget_low_s16 (VM)));
-    C32 = vaddq_s32(C32, vmovl_s16(vget_high_s16(VM)));
-   
-
-    B  = vdup_n_s8(Br[baseB+3]);
-    Bn = vdup_n_s8(Br[baseB+11]);
-    VM = vmull_s8(A0, B);
-    VM = vmlal_s8(VM, A0n, Bn);
-    C03 = vaddq_s32(C03, vmovl_s16(vget_low_s16 (VM)));
-    C13 = vaddq_s32(C13, vmovl_s16(vget_high_s16(VM)));
-    VM = vmull_s8(A1, B);
-    VM = vmlal_s8(VM, A1n, Bn);
-    C23 = vaddq_s32(C23, vmovl_s16(vget_low_s16 (VM)));
-    C33 = vaddq_s32(C33, vmovl_s16(vget_high_s16(VM)));
-
-
-    B  = vdup_n_s8(Br[baseB+4]);
-    Bn = vdup_n_s8(Br[baseB+12]);
-    VM = vmull_s8(A0, B);
-    VM = vmlal_s8(VM, A0n, Bn);
-    C04 = vaddq_s32(C04, vmovl_s16(vget_low_s16 (VM)));
-    C14 = vaddq_s32(C14, vmovl_s16(vget_high_s16(VM)));
-    VM = vmull_s8(A1, B);
-    VM = vmlal_s8(VM, A1n, Bn);
-    C24 = vaddq_s32(C24, vmovl_s16(vget_low_s16 (VM)));
-    C34 = vaddq_s32(C34, vmovl_s16(vget_high_s16(VM)));
-    
-    
-    B  = vdup_n_s8(Br[baseB+5]);
-    Bn = vdup_n_s8(Br[baseB+13]);
-    VM = vmull_s8(A0, B);
-    VM = vmlal_s8(VM, A0n, Bn);
-    C05 = vaddq_s32(C05, vmovl_s16(vget_low_s16 (VM)));
-    C15 = vaddq_s32(C15, vmovl_s16(vget_high_s16(VM)));
-    VM = vmull_s8(A1, B);
-    VM = vmlal_s8(VM, A1n, Bn);
-    C25 = vaddq_s32(C25, vmovl_s16(vget_low_s16 (VM)));
-    C35 = vaddq_s32(C35, vmovl_s16(vget_high_s16(VM)));
-    
-    B  = vdup_n_s8(Br[baseB+6]);
-    Bn = vdup_n_s8(Br[baseB+14]);
-    VM = vmull_s8(A0, B);
-    VM = vmlal_s8(VM, A0n, Bn);
-    C06 = vaddq_s32(C06, vmovl_s16(vget_low_s16 (VM)));
-    C16 = vaddq_s32(C16, vmovl_s16(vget_high_s16(VM)));
-    VM = vmull_s8(A1, B);
-    VM = vmlal_s8(VM, A1n, Bn);
-    C26 = vaddq_s32(C26, vmovl_s16(vget_low_s16 (VM)));
-    C36 = vaddq_s32(C36, vmovl_s16(vget_high_s16(VM)));
-
-    B  = vdup_n_s8(Br[baseB+7]);
-    Bn = vdup_n_s8(Br[baseB+15]);
-    VM = vmull_s8(A0, B);
-    VM = vmlal_s8(VM, A0n, Bn);
-    C07 = vaddq_s32(C07, vmovl_s16(vget_low_s16 (VM)));
-    C17 = vaddq_s32(C17, vmovl_s16(vget_high_s16(VM)));
-    VM = vmull_s8(A1, B);
-    VM = vmlal_s8(VM, A1n, Bn);
-    C27 = vaddq_s32(C27, vmovl_s16(vget_low_s16 (VM)));
-    C37 = vaddq_s32(C37, vmovl_s16(vget_high_s16(VM)));
-    
-    baseA = baseA + 32; 
-    baseB = baseB + 16;
-  }
-  
-
-  // Last iteration if kc is an odd number
-  if ((kc%2) != 0) {
-    //Load A
-    _A  = vld1q_s8(&Ar[baseA]);
-    A0 = vget_low_s8 (_A);
-    A1 = vget_high_s8(_A);
-
-    //Load B
-    B  = vdup_n_s8(Br[baseB+0]); 
-    VM  = vmull_s8(A0, B);
-    C00 = vaddq_s32(C00, vmovl_s16(vget_low_s16 (VM)));
-    C10 = vaddq_s32(C10, vmovl_s16(vget_high_s16(VM)));
-    VM  = vmull_s8(A1, B);
-    C20 = vaddq_s32(C20, vmovl_s16(vget_low_s16 (VM)));
-    C30 = vaddq_s32(C30, vmovl_s16(vget_high_s16(VM)));
-
-    B  = vdup_n_s8(Br[baseB+1]); 
-    VM  = vmull_s8(A0, B);
-    C01 = vaddq_s32(C01, vmovl_s16(vget_low_s16 (VM)));
-    C11 = vaddq_s32(C11, vmovl_s16(vget_high_s16(VM)));
-    VM  = vmull_s8(A1, B);
-    C21 = vaddq_s32(C21, vmovl_s16(vget_low_s16 (VM)));
-    C31 = vaddq_s32(C31, vmovl_s16(vget_high_s16(VM)));
-
-    B  = vdup_n_s8(Br[baseB+2]); 
-    VM  = vmull_s8(A0, B);
-    C02 = vaddq_s32(C02, vmovl_s16(vget_low_s16 (VM)));
-    C12 = vaddq_s32(C12, vmovl_s16(vget_high_s16(VM)));
-    VM  = vmull_s8(A1, B);
-    C22 = vaddq_s32(C22, vmovl_s16(vget_low_s16 (VM)));
-    C32 = vaddq_s32(C32, vmovl_s16(vget_high_s16(VM)));
-
-    B  = vdup_n_s8(Br[baseB+3]); 
-    VM  = vmull_s8(A0, B);
-    C03 = vaddq_s32(C03, vmovl_s16(vget_low_s16 (VM)));
-    C13 = vaddq_s32(C13, vmovl_s16(vget_high_s16(VM)));
-    VM  = vmull_s8(A1, B);
-    C23 = vaddq_s32(C23, vmovl_s16(vget_low_s16 (VM)));
-    C33 = vaddq_s32(C33, vmovl_s16(vget_high_s16(VM)));
-    
-    B  = vdup_n_s8(Br[baseB+4]); 
-    VM  = vmull_s8(A0, B);
-    C04 = vaddq_s32(C04, vmovl_s16(vget_low_s16 (VM)));
-    C14 = vaddq_s32(C14, vmovl_s16(vget_high_s16(VM)));
-    VM  = vmull_s8(A1, B);
-    C24 = vaddq_s32(C24, vmovl_s16(vget_low_s16 (VM)));
-    C34 = vaddq_s32(C34, vmovl_s16(vget_high_s16(VM)));
-    
-    B  = vdup_n_s8(Br[baseB+5]); 
-    VM  = vmull_s8(A0, B);
-    C05 = vaddq_s32(C05, vmovl_s16(vget_low_s16 (VM)));
-    C15 = vaddq_s32(C15, vmovl_s16(vget_high_s16(VM)));
-    VM  = vmull_s8(A1, B);
-    C25 = vaddq_s32(C25, vmovl_s16(vget_low_s16 (VM)));
-    C35 = vaddq_s32(C35, vmovl_s16(vget_high_s16(VM)));
-    
-    B  = vdup_n_s8(Br[baseB+6]); 
-    VM  = vmull_s8(A0, B);
-    C06 = vaddq_s32(C06, vmovl_s16(vget_low_s16 (VM)));
-    C16 = vaddq_s32(C16, vmovl_s16(vget_high_s16(VM)));
-    VM  = vmull_s8(A1, B);
-    C26 = vaddq_s32(C26, vmovl_s16(vget_low_s16 (VM)));
-    C36 = vaddq_s32(C36, vmovl_s16(vget_high_s16(VM)));
-    
-    B  = vdup_n_s8(Br[baseB+7]); 
-    VM  = vmull_s8(A0, B);
-    C07 = vaddq_s32(C07, vmovl_s16(vget_low_s16 (VM)));
-    C17 = vaddq_s32(C17, vmovl_s16(vget_high_s16(VM)));
-    VM  = vmull_s8(A1, B);
-    C27 = vaddq_s32(C27, vmovl_s16(vget_low_s16 (VM)));
-    C37 = vaddq_s32(C37, vmovl_s16(vget_high_s16(VM)));
-  }
-
-
-  vst1q_s32(&Ccol(0,0), C00);
-  vst1q_s32(&Ccol(0,1), C01);
-  vst1q_s32(&Ccol(0,2), C02);
-  vst1q_s32(&Ccol(0,3), C03);
-  vst1q_s32(&Ccol(0,4), C04);
-  vst1q_s32(&Ccol(0,5), C05);
-  vst1q_s32(&Ccol(0,6), C06);
-  vst1q_s32(&Ccol(0,7), C07);
-
-  vst1q_s32(&Ccol(4,0), C10);
-  vst1q_s32(&Ccol(4,1), C11);
-  vst1q_s32(&Ccol(4,2), C12);
-  vst1q_s32(&Ccol(4,3), C13);
-  vst1q_s32(&Ccol(4,4), C14);
-  vst1q_s32(&Ccol(4,5), C15);
-  vst1q_s32(&Ccol(4,6), C16);
-  vst1q_s32(&Ccol(4,7), C17);
-    
-    
-  vst1q_s32(&Ccol(8,0), C20);
-  vst1q_s32(&Ccol(8,1), C21);
-  vst1q_s32(&Ccol(8,2), C22);
-  vst1q_s32(&Ccol(8,3), C23);
-  vst1q_s32(&Ccol(8,4), C24);
-  vst1q_s32(&Ccol(8,5), C25);
-  vst1q_s32(&Ccol(8,6), C26);
-  vst1q_s32(&Ccol(8,7), C27);
-    
-  
-  vst1q_s32(&Ccol(12,0), C30);
-  vst1q_s32(&Ccol(12,1), C31);
-  vst1q_s32(&Ccol(12,2), C32);
-  vst1q_s32(&Ccol(12,3), C33);
-  vst1q_s32(&Ccol(12,4), C34);
-  vst1q_s32(&Ccol(12,5), C35);
-  vst1q_s32(&Ccol(12,6), C36);
-  vst1q_s32(&Ccol(12,7), C37);
-    
-
-
-}
 
 void ukernel_intrinsic_qu8_24x4_unrollx2_int8_int32(int kc, int8_t  *Ar, int8_t *Br, int32_t *Cr, int32_t beta, int ldC) {
 

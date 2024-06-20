@@ -312,42 +312,34 @@ def micro_kernel_int8_int32_s8_generator(arch, MR, NR, lane, dtype, vlen, macros
         micro += f"#include \"uKernels_intrinsic_{dtype}.h\"\n\n"
 
         micro += f"#define Crref(i,j) Cr[j*Clda+i]\n"
-        micro += f"#define vstoreC_{dtype}(mem, vreg)                           vst1q_s32(mem, vreg)\n"
-        micro += f"#define vinit_{dtype}(vreg, value)                           vreg  = vmovq_n_s32(value)\n"
-        micro += f"#define vloadC_{dtype}(vreg, mem)                            vreg  = vld1q_s32(mem)\n"
-        micro += f"#define vload_{dtype}(vreg, mem)                             vreg  = vmovl_s8(vld1_s8(mem))\n"
-        micro += f"#define vgetlow_{dtype}(vreg1, vreg2)                        vreg1 = vget_low_s16(vreg2)\n"
-        micro += f"#define vdup_{dtype}(vreg, mem)                              vreg  = vdup_n_s16((int16_t) mem)\n"
-        micro += f"#define vupdate_lane_{dtype}(vreg1, vreg2, vreg3, lane)      vreg1 = vmlal_laneq_s16     (vreg1, vreg2, vreg3, lane)\n"
-        micro += f"#define vupdate_high_lane_{dtype}(vreg1, vreg2, vreg3, lane) vreg1 = vmlal_high_laneq_s16(vreg1, vreg2, vreg3, lane)\n"
+        micro += f"#define vstoreC_{dtype}(mem, vreg)                    vst1q_s32(mem, vreg)\n"
+        micro += f"#define vinit_{dtype}(vreg, value)                    vreg  = vmovq_n_s32(value)\n"
+        micro += f"#define vloadC_{dtype}(vreg, mem)                     vreg  = vld1q_s32(mem)\n"
+        micro += f"#define vload_{dtype}(vreg, mem)                      vreg  = vld1q_s8(mem)\n"
+        micro += f"#define vload_s_{dtype}(vreg, mem)                     vreg  = vld1_s8(mem)\n"
+        micro += f"#define vgetlow_{dtype}(vreg1, vreg2)                 vreg1 = vget_low_s8(vreg2)\n"
+        micro += f"#define vgethigh_{dtype}(vreg1, vreg2)                vreg1 = vget_high_s8(vreg2)\n"
+        micro += f"#define vdup_{dtype}(vreg, mem)                       vreg  = vdup_n_s8(mem)\n"
+        micro += f"#define vmull_{dtype}(vreg1, vreg2, vreg3)            vreg1 = vmull_s8(vreg2, vreg3)\n"
+        micro += f"#define vmlal_{dtype}(vreg1, vreg2, vreg3)            vreg1 = vmlal_s8(vreg1, vreg2, vreg3)\n"
+        micro += f"#define vaddq_low_{dtype}(vreg1, vreg2)               vreg1 = vaddq_s32(vreg1, vmovl_s16(vget_low_s16(vreg2)))\n"
+        micro += f"#define vaddq_high_{dtype}(vreg1, vreg2)              vreg1 = vaddq_s32(vreg1, vmovl_s16(vget_high_s16(vreg2)))\n"
+
 
     micro += "void ukernel_intrinsic_"+str(MR)+"x"+str(NR)+"_"+dtype+"(int kc, int8_t  *Ar, int8_t *Br, int32_t *Cr, int32_t beta, int Clda){\n"
     micro += "  int pr, bA = 0, bB = 0;\n"
-
+    micro += "  int8x16_t _A, _An;\n"
+    micro += "  int16x8_t VM;\n "
+    micro += "  int8x8_t B, Bn;\n"
     
-    micro += "  int16x8_t "
+    micro += "  int8x8_t "
     abregs = ""
     for mr in range(0, MR // 8):
-        abregs += f" A{mr}, "
+        abregs += f" A{mr}, An{mr}, "
     if MR % 8 != 0:
-        abregs += f" A{MR // 8}, "
-
-    for nr in range(0, NR // 8):
-        abregs += f" B{nr}, "
-    if NR % 8 != 0:
-        abregs += f" B{NR // 8}, "
+        abregs += f" A{MR // 8}, An{MR // 8}, "
     micro += abregs[:-2] + ";\n"
    
-
-    micro += "  int16x4_t "
-    abregs = ""
-    for mr in range(0, MR // 8):
-        abregs += f" Alow{mr}, "
-    if MR % 8 != 0:
-        abregs += f" Alow{MR // 8}, "
-    micro += abregs[:-2] + ";\n"
-
-
     micro += "  int32x4_t "
     cregs  = ""
     for mr in range(0, vMR):
@@ -367,32 +359,74 @@ def micro_kernel_int8_int32_s8_generator(arch, MR, NR, lane, dtype, vlen, macros
     micro += "  }\n\n"
 
 
+    micro += "  for (pr=0; pr<kc-1; pr+=2) { // Loop L6\n"
+    mr_id = 0
+    desp  = 0
+    for mr in range(0, MR // 16):
+        micro += f"    vload_{dtype}(_A, &Ar[bA + {desp}]);\n"
+        micro += f"    vgetlow_{dtype}(A{mr_id}, _A);\n" 
+        mr_id += 1
+        micro += f"    vgethigh_{dtype}(A{mr_id}, _A);\n\n" 
+        mr_id += 1
+        desp  += 16
+    if MR % 16 != 0:
+        micro += f"    vload_s_{dtype}(A{mr_id}, &Ar[bA + {desp}]);\n"
+        desp += 8
     
-    micro += "  for (pr=0; pr<kc; pr++) { // Loop L6\n"
 
-    for mr in range(0, MR // 8):
-        micro += f"    vload_{dtype}(A{mr}, &Ar[bA + {mr * 8}]);\n"
-        micro += f"    vgetlow_{dtype}(Alow{mr}, A{mr});\n"
-    if MR % 8 != 0:
-        micro += f"    vload_{dtype}(A{MR // 8}, &Ar[bA + {MR // 8 * 8}]);\n"
-        micro += f"    vgetlow_{dtype}(Alow{MR // 8}, A{MR // 8});\n"
+    mr_id = 0
+    for mr in range(0, MR // 16):
+        micro += f"    vload_{dtype}(_A, &Ar[bA + {desp}]);\n"
+        micro += f"    vgetlow_{dtype}(An{mr_id}, _A);\n" 
+        mr_id += 1
+        micro += f"    vgethigh_{dtype}(An{mr_id}, _A);\n\n" 
+        mr_id += 1
+        desp  += 16
 
-    for nr in range(0, NR // 8):
-        micro += f"    vload_{dtype}(B{nr}, &Br[bB + {nr * 8}]);\n"
-    if NR % 8 != 0:
-        micro += f"    vload_{dtype}(B{NR // 8}, &Br[bB + {NR // 8 * 8}]);\n"
+    if MR % 16 != 0:
+        micro += f"    vload_s_{dtype}(An{mr_id}, &Ar[bA + {desp}]);\n\n"
 
 
     for nr in range(0, NR):
-        for mr in range(0, MR // 8):
-            micro += f"    vupdate_lane_{dtype}(C{mr*2}{nr},   Alow{mr}, B{nr // 8}, {nr % 8}); \n"
-            micro += f"    vupdate_high_lane_{dtype}(C{mr*2 + 1}{nr}, A{mr}, B{nr // 8}, {nr % 8}); \n"
-        if (MR % 8 != 0): 
-            micro += f"    vupdate_lane_{dtype}(C{mr}{nr}, A{mr}, B{nr // 8}, {nr % 8}); \n"
+        micro += f"    vdup_{dtype}(B, Br[bB+{nr}]);\n"
+        micro += f"    vdup_{dtype}(Bn, Br[bB+{nr+NR}]);\n"
+        mr_id = 0
+        for mr in range(0, MR // 4, 2):
+            micro += f"    vmull_{dtype}(VM, A{mr_id}, B);\n"
+            micro += f"    vmlal_{dtype}(VM, An{mr_id}, Bn);\n"
+            micro += f"    vaddq_low_{dtype}(C{mr}{nr}, VM);\n"
+            micro += f"    vaddq_high_{dtype}(C{mr+1}{nr}, VM);\n\n"
+            mr_id += 1
 
-    micro += f"    bA+={MR};\n"
-    micro += f"    bB+={NR};\n"
+
+    micro += f"    bA+={MR*2};\n"
+    micro += f"    bB+={NR*2};\n"
     micro += "  }\n\n"
+
+    micro += "  if ((kc%2) != 0) {\n"
+    mr_id = 0
+    desp  = 0
+    for mr in range(0, MR // 16):
+        micro += f"    vload_{dtype}(_A, &Ar[bA + {desp}]);\n"
+        micro += f"    vgetlow_{dtype}(A{mr_id}, _A);\n" 
+        mr_id += 1
+        micro += f"    vgethigh_{dtype}(A{mr_id}, _A);\n" 
+        mr_id += 1
+        desp  += 16
+
+    if MR % 16 != 0:
+        micro += f"    vload_s_{dtype}(A{mr_id}, &Ar[bA + {desp}]);\n"
+
+    for nr in range(0, NR):
+        micro += f"    vdup_{dtype}(B, Br[bB+{nr}]);\n"
+        mr_id = 0
+        for mr in range(0, MR // 4, 2):
+            micro += f"    vmull_{dtype}(VM, A{mr_id}, B);\n"
+            micro += f"    vaddq_low_{dtype}(C{mr}{nr}, VM);\n"
+            micro += f"    vaddq_high_{dtype}(C{mr+1}{nr}, VM);\n"
+            mr_id += 1
+
+    micro += "  }\n"
 
     for mr in range(0, vMR):
         for nr in range(0, NR):
@@ -738,10 +772,10 @@ def main() -> int:
             for nr in range(stepNR, maxNR, stepNR):
                 if dtype == "int8_int32_s8":
                     vlen = 4
-                    micro_kernel_int8_int32_u8_generator(arch, mr, nr, lane, dtype, vlen, macros, cfile, hfile)
+                    micro_kernel_int8_int32_s8_generator(arch, mr, nr, lane, dtype, vlen, macros, cfile, hfile)
                 elif dtype == "int8_int32_u8":
                     vlen = 4
-                    micro_kernel_int8_int32_s8_generator(arch, mr, nr, lane, dtype, vlen, macros, cfile, hfile)
+                    micro_kernel_int8_int32_u8_generator(arch, mr, nr, lane, dtype, vlen, macros, cfile, hfile)
                 elif dtype == "int8_int16":
                     vlen = 8
                     if mr % 8 != 0:

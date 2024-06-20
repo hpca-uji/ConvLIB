@@ -11,7 +11,8 @@
 #if FP16
   #include "intrinsic_generator/ukernels/uKernels_intrinsic_fp16.h"
 #else
-  #include "intrinsic_generator/ukernels/uKernels_intrinsic_int8_int32.h"
+  #include "intrinsic_generator/ukernels/uKernels_intrinsic_int8_int32_s8.h"
+  #include "intrinsic_generator/ukernels/uKernels_intrinsic_int8_int32_u8.h"
 #endif
 
 #define CONVDIRECT 0
@@ -31,13 +32,13 @@
 #elif INT8_INT32_U8
   #define AB_TYPE       int8_t
   #define C_TYPE        int32_t
-  #define UK_TYPE       uk_intrinsic_int8_int32
-  #define UK_EDGE_TYPE  uk_intrinsic_int8_int32
+  #define UK_TYPE       uk_intrinsic_int8_int32_u8
+  #define UK_EDGE_TYPE  uk_intrinsic_int8_int32_u8
 #elif INT8_INT32_S8
   #define AB_TYPE       int8_t
   #define C_TYPE        int32_t
-  #define UK_TYPE       uk_intrinsic_int8_int32
-  #define UK_EDGE_TYPE  uk_intrinsic_int8_int32
+  #define UK_TYPE       uk_intrinsic_int8_int32_s8
+  #define UK_EDGE_TYPE  uk_intrinsic_int8_int32_s8
 #endif
 
 void fselector(int MR, int NR, UK_TYPE *uk_vec, UK_EDGE_TYPE *uk_edge_vec, 

@@ -3,8 +3,8 @@
 #include <math.h>
 
 #include "../ukernels.h"
-#include "../asm_generator/ukernels/gemm_ukernel_headers.h"
-#include "../intrinsic_generator/ukernels/uKernels_intrinsic_int8_int32.h"
+//#include "../asm_generator/ukernels/gemm_ukernel_headers.h"
+//#include "../intrinsic_generator/ukernels/uKernels_intrinsic_int8_int32.h"
 
 #ifdef OMP_ENABLE
   #include <omp.h>

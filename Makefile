@@ -72,8 +72,9 @@ ifeq ($(arch), armv8)
         OBJ_FILES += $(OBJDIR)/uKernels_intrinsic_fp16.o
     endif
     OBJ_FILES += $(OBJDIR)/uKernels_intrinsic_fp32.o
-    OBJ_FILES += $(OBJDIR)/uKernels_intrinsic_int8_int16.o 
-    OBJ_FILES += $(OBJDIR)/uKernels_intrinsic_int8_int32.o
+    #OBJ_FILES += $(OBJDIR)/uKernels_intrinsic_int8_int16.o 
+    OBJ_FILES += $(OBJDIR)/uKernels_intrinsic_int8_int32_s8.o
+    OBJ_FILES += $(OBJDIR)/uKernels_intrinsic_int8_int32_u8.o
 endif
 
 SRC_CONV_FILES = $(wildcard ./src/*.c)
