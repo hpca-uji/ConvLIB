@@ -2,9 +2,10 @@
 #Compilation Options. Possible values [T | F]
 #  [*] T: True and F: False
 #----------------------------------------------------------
-OPENBLAS_ENABLE = T
-BLIS_ENABLE     = T
+OPENBLAS_ENABLE = F
+BLIS_ENABLE     = F
 FP16_ENABLE     = T
+SDOT_ENABLE     = T
 #----------------------------------------------------------
 
 
@@ -15,7 +16,7 @@ FP16_ENABLE     = T
 #  [*] INT8_INT32_U8
 #  [*] INT8_INT32_S8
 #----------------------------------------------------------
-DTYPE = INT8_INT32_S8
+DTYPE = INT8_INT32_U8
 #----------------------------------------------------------
 
 

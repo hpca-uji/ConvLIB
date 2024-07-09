@@ -255,12 +255,15 @@ int main(int argc, char *argv[]) {
         MR = mr_iter;
         NR = nr_iter;
 
-        if (strcmp("CONVDIRECT", ALG)==0)
-	  fselector(NR, MR, uk_vec, uk_edge_vec, &uk, &uk_edge);
-	else
-	  fselector(MR, NR, uk_vec, uk_edge_vec, &uk, &uk_edge);
+	if (strcmp("SDOT_GEMM", GEMM)!=0) {
+          if (strcmp("CONVDIRECT", ALG)==0)
+	    fselector(NR, MR, uk_vec, uk_edge_vec, &uk, &uk_edge);
+	  else
+	    fselector(MR, NR, uk_vec, uk_edge_vec, &uk, &uk_edge);
   
-	if (uk == NULL) continue;
+	  if (uk == NULL) continue;
+	
+	}
 
         if (strcmp("LOWERING", ALG)==0 || strcmp("CONVGEMM", ALG)==0) {
           if (model_on) {
@@ -272,8 +275,8 @@ int main(int argc, char *argv[]) {
 	    //mc=WOB; nc=COB; kc=CIB
             mc_blis = WOB; nc_blis = COB; kc_blis = CIB;
 	  }
-          Ac_blis = (AB_TYPE *)aligned_alloc(32, TH*(MR+mc_blis)*(kc_blis)*sizeof(AB_TYPE));
-          Bc_blis = (AB_TYPE *)aligned_alloc(32, TH*(kc_blis)*(NR+nc_blis)*sizeof(AB_TYPE));
+          Ac_blis = (AB_TYPE *)aligned_alloc(32, TH*(MR+mc_blis)*(16 + kc_blis)*sizeof(AB_TYPE));
+          Bc_blis = (AB_TYPE *)aligned_alloc(32, TH*(16 + kc_blis)*(NR+nc_blis)*sizeof(AB_TYPE));
         } else {
           
 	  if (model_on) {
@@ -395,6 +398,10 @@ int main(int argc, char *argv[]) {
                                 alphap, F, lda, DEXT, ldb, betap, Y, ldc,
                                 Ac_blis, Bc_blis, mc_blis, nc_blis, kc_blis, 
 				MR, NR, TH, testConf->LOOP, Ctmp, uk_vec, uk_edge_vec);
+	    } else if (strcmp("SDOT_GEMM", GEMM)==0) {
+	      ldc = ho * wo * n;
+              dot_gemm( 'C', 'C', 'R', mm, nn, kk, F, lda, DEXT, ldb, betap, Y, ldc,
+	               Ac_blis, Bc_blis, mc_blis, nc_blis, kc_blis, MR, NR);
 	    } else {
 	      printf("ERROR: Algorithm unsupported.\n"); exit(-1);
 	    }
@@ -443,6 +450,13 @@ int main(int argc, char *argv[]) {
 		              F,  ldF1, ldF2, ldF3, 
 		              Yg, ldY1, ldY2, ldY3,
 		              tformat);
+
+	  if (strcmp("LOWERING", ALG)==0 && strcmp("SDOT_GEMM", GEMM)==0)  {
+            C_TYPE *Y_tmp = (C_TYPE *) malloc (sizeof(C_TYPE) * n * ho * wo * k);
+	    convert_row2col(Y, Y_tmp, k, ho * wo * n);
+	    free(Y);
+	    Y = Y_tmp;
+	  }
 
           error = 0.0;
           nrm   = 0.0;
@@ -512,7 +526,7 @@ int main(int argc, char *argv[]) {
           free(Ac); 
           free(FB);
         }
-    
+   
         free(Y);
         free(D);
         free(F);

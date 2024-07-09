@@ -97,14 +97,14 @@ int model_level(int isL3, int NL, int CL, int WL, int dataSize, int m, int n) {
 void get_optim_mc_nc_kc(int dataSize, int m, int n, int k, int mr, int nr, int *mc, int *nc, int *kc, int *params) {
 
   //NL1, CL1, WL1
-  *kc = model_level(0, params[2], params[3], params[4], dataSize, mr, nr); *kc = floor(*kc);
+  *kc = model_level(0, params[2], params[3], params[4], dataSize, mr, nr); 
   *kc = min(k, *kc);
   
-  *mc = model_level(0, params[7], params[8], params[9], dataSize, *kc, nr); *mc = floor(*mc);
+  *mc = model_level(0, params[7], params[8], params[9], dataSize, *kc, nr); 
   *mc = min(m, *mc);
   *mc = ceil((float)*mc / (float)mr) * mr;
   
-  *nc = model_level(1, params[12], params[13], params[14], dataSize, *kc, *mc); *nc = floor(*nc);
+  *nc = model_level(1, params[12], params[13], params[14], dataSize, *kc, *mc); 
   *nc = min(n, *nc);
   *nc = ceil((float)*nc / (float)nr) * nr;
   

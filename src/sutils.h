@@ -10,4 +10,9 @@ void print_tensor4D_int8( char *name, int m1, int m2, int m3, int m4, int8_t *T,
 
 int    print_matrix( char *, char, int, int, AB_TYPE *, int );
 int    generate_tensor4D( int, int, int, int, AB_TYPE *, int, int, int );
+
 double dclock();
+
+void convert_row2col(int32_t *Ai, int32_t *Ao, int m, int n);
+void convert_col2row(int32_t *Ai, int32_t *Ao, int m, int n);
+

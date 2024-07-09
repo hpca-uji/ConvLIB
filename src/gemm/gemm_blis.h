@@ -46,6 +46,11 @@ void gemm_blis_A3B2C0( char, char, char, char, char, size_t, size_t, size_t,
 		       size_t, size_t, size_t, int, int, int, int, C_TYPE *,
 		       UK_TYPE *uk_vec, UK_EDGE_TYPE *uk_edge_vec);
 
+void dot_gemm( char orderA, char orderB, char orderC,
+	       size_t m, size_t n, size_t k, 
+               AB_TYPE *A, size_t ldA, AB_TYPE *B, size_t ldB, 
+	       C_TYPE beta, C_TYPE *C, size_t ldC, AB_TYPE *Ac, AB_TYPE *Bc, 
+	       size_t MC, size_t NC, size_t KC, int MR, int NR);
 
 
 void pack_RB( char, char, int, int, AB_TYPE *, int, AB_TYPE *, int );
@@ -54,3 +59,5 @@ void pack_CB( char, char, int, int, AB_TYPE *, int, AB_TYPE *, int );
 void pack_RB_v( char, char, int, int, AB_TYPE *, int, AB_TYPE *, int );
 void pack_CB_v( char, char, int, int, AB_TYPE *, int, AB_TYPE *, int );
 
+void pack_dot_A(char orderA, int mc, int kc, int8_t *M, int ldM, int8_t *Mc, int MR);
+void pack_dot_B(char orderB, int kc, int nc, int8_t *M, int ldM, int8_t *Mc, int NR);

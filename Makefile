@@ -27,7 +27,11 @@ ifneq ($(MAKECMDGOALS),clean)
         CC       = gcc
         CLINKER  = gcc
         ifeq ($(FP16_ENABLE), T)
+          ifeq ($(SDOT_ENABLE), T)
+            OPTFLAGS = -march=armv8.2-a+fp16+dotprod -DARMV8 $(FLAGS) -DSDOT
+          else
             OPTFLAGS = -march=armv8.2-a+fp16 -DARMV8 $(FLAGS) 
+	  endif
 	else
             OPTFLAGS = -march=armv8-a -DARMV8 $(FLAGS)
         endif

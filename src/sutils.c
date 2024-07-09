@@ -10,6 +10,24 @@
 #define Mcol(a1,a2)  M[ (a2)*(ldM)+(a1) ]
 #define Mrow(a1,a2)  M[ (a1)*(ldM)+(a2) ]
 
+void convert_row2col(int32_t *Ai, int32_t *Ao, int m, int n) {
+  //Arow: Input  Matrix in row-major
+  //Acol: Output Matrix in col-major
+
+  for (int j = 0; j < n; j++)
+    for (int i = 0; i < m; i++)
+      Ao[j * m + i] = Ai[i * n + j];
+}
+
+void convert_col2row(int32_t *Ai, int32_t *Ao, int m, int n) {
+  //Arow: Input  Matrix in col-major
+  //Acol: Output Matrix in row-major
+
+  for (int j = 0; j < n; j++)
+    for (int i = 0; i < m; i++)
+      Ao[i * n + j] = Ai[j * m + i];
+}
+
 double dclock() {
 /* 
  * Timer
@@ -22,6 +40,7 @@ double dclock() {
 
   return (double) (tv.tv_sec + tv.tv_usec*1.0e-6);
 }
+
 /*===========================================================================*/
 void generate_tensor4D( int m1, int m2, int m3, int m4, AB_TYPE *T, int ldT1, int ldT2, int ldT3 ) {
  //Generate a 4D tensor with random entries. 
