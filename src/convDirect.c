@@ -1,46 +1,5 @@
 #include "convDirect.h"
 
-void gemm_base( int m, int n, int k, 
-                DTYPE alpha, DTYPE *A, int ldA, 
-                             DTYPE *B, int ldB, 
-                DTYPE beta,  DTYPE *C, int ldC ){
-
-  //Baseline micro-kernel 
-  //Replace with specialized micro-kernel where C-->m x n is resident in registers
-
-  int    i, j, p;
-  DTYPE  tmp;
-
-  for ( j=0; j<n; j++ )
-    for ( i=0; i<m; i++ ) {
-      tmp = 0.0; 
-      for ( p=0; p<k; p++ ) 
-        tmp += Arow(i,p) * Brow(p,j);
-      Crow(i,j) = alpha*tmp + beta*Crow(i,j);
-    }
-}
-
-void gemm_base_col( int m, int n, int k, 
-		    DTYPE alpha, DTYPE *A, int ldA, 
-		    DTYPE *B, int ldB, 
-		    DTYPE beta,  DTYPE *C, int ldC ) {
-
-  //Baseline micro-kernel 
-  //Replace with specialized micro-kernel where C-->m x n is resident in registers
-
-  int    i, j, p;
-  DTYPE  tmp;
-
-  for ( j=0; j<n; j++ )
-    for ( i=0; i<m; i++ ) {
-      tmp = 0.0; 
-      for ( p=0; p<k; p++ ) 
-        tmp += Acol(i,p) * Bcol(p,j);
-      Ccol(i,j) = alpha*tmp + beta*Ccol(i,j);
-    }
-}
-
-
 void packRB( char orderA, char transA, int mc, int nc, DTYPE *A, int ldA, DTYPE *Ac, int RR ){
   int    i, j, ii, k, rr;
 
