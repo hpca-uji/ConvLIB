@@ -1,11 +1,22 @@
 
 include Makefile.inc
 
-#------------------------------------------
-#| COMPILERS                              |
-#------------------------------------------
+FLAGS=-O3 -DCHECK -D$(PROCESSOR)
 
-FLAGS=-O3 -DCHECK
+# Check options
+ifeq ($(PROCESSOR), A57)
+  arch=armv8
+else ifeq ($(PROCESSOR), A78AE)
+  arch=armv8
+else ifeq ($(PROCESSOR), Carmel)
+  arch=armv8
+else ifeq ($(PROCESSOR), C906)
+  arch=riscv
+else ifeq ($(PROCESSOR), C910)
+  arch=riscv
+else
+  $(error Processor unsuported. Please, select a correct option in Makefile.inc.)
+endif
 
 ifeq ($(DTYPE), FP32)
     FLAGS += -DFP32
@@ -15,29 +26,29 @@ else ifeq ($(DTYPE), INT8_INT32_U8)
     FLAGS += -DINT8_INT32_U8
 else ifeq ($(DTYPE), INT8_INT32_S8)
     FLAGS += -DINT8_INT32_S8
+else
+  $(error Data type unsuported. Please, select a correct option in Makefile.inc.)
 endif
 
-ifneq ($(MAKECMDGOALS),clean)
-    ifeq ($(arch), riscv)
-        CC       = riscv64-unknown-linux-gnu-gcc
-        CLINKER  = riscv64-unknown-linux-gnu-gcc
-        #OPTFLAGS   +=  -O3 -fopenmp -march=rv64imafdcv0p7_zfh_xtheadc -mabi=lp64d -mtune=c910
-        OPTFLAGS = -O0 -g3 -march=rv64gcv0p7_zfh_xtheadc -mabi=lp64d -DFP32 -mtune=c906 -static -DRISCV 
-    else ifeq ($(arch), armv8)
-        CC       = gcc
-        CLINKER  = gcc
-        ifeq ($(FP16_ENABLE), T)
-          ifeq ($(SDOT_ENABLE), T)
-            OPTFLAGS = -march=armv8.2-a+fp16+dotprod -DARMV8 $(FLAGS) -DSDOT
-          else
-            OPTFLAGS = -march=armv8.2-a+fp16 -DARMV8 $(FLAGS) 
-	  endif
-	else
-            OPTFLAGS = -march=armv8-a -DARMV8 $(FLAGS)
-        endif
+
+ifeq ($(arch), riscv)
+    CC       = riscv64-unknown-linux-gnu-gcc
+    CLINKER  = riscv64-unknown-linux-gnu-gcc
+    #OPTFLAGS   +=  -O3 -fopenmp -march=rv64imafdcv0p7_zfh_xtheadc -mabi=lp64d -mtune=c910
+    OPTFLAGS = -O0 -g3 -march=rv64gcv0p7_zfh_xtheadc -mabi=lp64d -mtune=c906 -static -DRISCV $(FLAGS)
+else ifeq ($(arch), armv8)
+    CC       = gcc
+    CLINKER  = gcc
+    ifeq ($(PROCESSOR), A78AE)
+        OPTFLAGS = -march=armv8.2-a+fp16+dotprod -DARMV8 
+    else ifeq ($(PROCESSOR), Carmel)
+        OPTFLAGS = -march=armv8.2-a+fp16 -DARMV8  
     else
-        $(error Architecture unsuported. Please use arch=[riscv|armv8])
+        OPTFLAGS = -march=armv8-a -DARMV8 
     endif
+    OPTFLAGS += $(FLAGS)
+else
+    $(error Architecture unsuported. Please use arch=[riscv|armv8])
 endif
 
 
@@ -72,11 +83,10 @@ OBJ_ASM_FILES = $(patsubst ./src/asm_generator/ukernels/%.S, $(OBJDIR)/%.o, $(SR
 OBJ_FILES += $(OBJ_ASM_FILES)
 
 ifeq ($(arch), armv8)
-    ifeq ($(FP16_ENABLE), T)
+    ifneq ($(PROCESSOR), A57) #Jetson Nano without support for fp16 saxpy dot products
         OBJ_FILES += $(OBJDIR)/uKernels_intrinsic_fp16.o
     endif
     OBJ_FILES += $(OBJDIR)/uKernels_intrinsic_fp32.o
-    #OBJ_FILES += $(OBJDIR)/uKernels_intrinsic_int8_int16.o 
     OBJ_FILES += $(OBJDIR)/uKernels_intrinsic_int8_int32_s8.o
     OBJ_FILES += $(OBJDIR)/uKernels_intrinsic_int8_int32_u8.o
 endif

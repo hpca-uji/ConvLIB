@@ -59,5 +59,13 @@ void pack_CB( char, char, int, int, AB_TYPE *, int, AB_TYPE *, int );
 void pack_RB_v( char, char, int, int, AB_TYPE *, int, AB_TYPE *, int );
 void pack_CB_v( char, char, int, int, AB_TYPE *, int, AB_TYPE *, int );
 
-void pack_dot_A(char orderA, int mc, int kc, int8_t *M, int ldM, int8_t *Mc, int MR);
-void pack_dot_B(char orderB, int kc, int nc, int8_t *M, int ldM, int8_t *Mc, int NR);
+void pack_dot_A(char orderA, int mc, int kc, AB_TYPE *M, int ldM, AB_TYPE *Mc, int MR);
+void pack_dot_B(char orderB, int kc, int nc, AB_TYPE *M, int ldM, AB_TYPE *Mc, int NR);
+
+
+void prepack_dot_B( char orderB, size_t n, size_t k, AB_TYPE *B, size_t ldB, 
+		    AB_TYPE *Bc, size_t NC, size_t KC, int NR);
+
+void prepack_dot_A( char orderA, size_t m, size_t k, AB_TYPE *A, size_t ldA, AB_TYPE *Ac,
+	           size_t MC, size_t KC, int MR);
+

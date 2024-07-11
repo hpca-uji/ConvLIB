@@ -13,6 +13,6 @@ int    generate_tensor4D( int, int, int, int, AB_TYPE *, int, int, int );
 
 double dclock();
 
-void convert_row2col(int32_t *Ai, int32_t *Ao, int m, int n);
-void convert_col2row(int32_t *Ai, int32_t *Ao, int m, int n);
+void convert_row2col(C_TYPE *Ai, C_TYPE *Ao, int m, int n);
+void convert_col2row(C_TYPE *Ai, C_TYPE *Ao, int m, int n);
 

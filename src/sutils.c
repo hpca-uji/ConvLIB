@@ -10,7 +10,7 @@
 #define Mcol(a1,a2)  M[ (a2)*(ldM)+(a1) ]
 #define Mrow(a1,a2)  M[ (a1)*(ldM)+(a2) ]
 
-void convert_row2col(int32_t *Ai, int32_t *Ao, int m, int n) {
+void convert_row2col(C_TYPE *Ai, C_TYPE *Ao, int m, int n) {
   //Arow: Input  Matrix in row-major
   //Acol: Output Matrix in col-major
 
@@ -19,7 +19,7 @@ void convert_row2col(int32_t *Ai, int32_t *Ao, int m, int n) {
       Ao[j * m + i] = Ai[i * n + j];
 }
 
-void convert_col2row(int32_t *Ai, int32_t *Ao, int m, int n) {
+void convert_col2row(C_TYPE *Ai, C_TYPE *Ao, int m, int n) {
   //Arow: Input  Matrix in col-major
   //Acol: Output Matrix in row-major
 

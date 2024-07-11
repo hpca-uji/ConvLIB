@@ -109,7 +109,7 @@ int main(int argc, char *argv[]) {
   int mm, nn, kk;
   int lda, ldb, ldc;
   int MR, NR, TH;
-  char *ALG, *GEMM;
+  char *in_algorithm, *in_gemm;
   int mr_limit, nr_limit, mr_iter, nr_iter, mr_init, nr_init;
 
   int vpadding;
@@ -130,29 +130,14 @@ int main(int argc, char *argv[]) {
   UK_TYPE uk;
   UK_EDGE_TYPE uk_edge;
 
-  #ifdef FP32
-    UK_TYPE      *uk_vec      = new_uk_asm_selector_fp32();
-    UK_EDGE_TYPE *uk_edge_vec = new_uk_asm_edge_selector_fp32();
-  #elif FP16
-    UK_TYPE      *uk_vec      = new_uk_intrinsic_selector_fp16();
-    UK_EDGE_TYPE *uk_edge_vec = NULL;
-  #elif INT8_INT32_U8
-    UK_TYPE      *uk_vec      = new_uk_intrinsic_selector_int8_int32_u8();
-    UK_EDGE_TYPE *uk_edge_vec = NULL;
-  #elif INT8_INT32_S8
-    UK_TYPE      *uk_vec      = new_uk_intrinsic_selector_int8_int32_s8();
-    UK_EDGE_TYPE *uk_edge_vec = NULL;
-  #else
-    printf("ERROR: Type unsupported\n");
-    exit(-1);
-  #endif
+  int ALGORITHM, GEMM;
 
   tmin    = testConf->tmin;
   tformat = testConf->format;
   TH      = testConf->TH;
 
-  ALG     = testConf->ALG; 
-  GEMM    = testConf->GEMM; 
+  in_algorithm = testConf->ALG; 
+  in_gemm = testConf->GEMM; 
  
   mc_blis = testConf->MC;
   nc_blis = testConf->NC;
@@ -172,6 +157,42 @@ int main(int argc, char *argv[]) {
     }
   }
 
+  if      (strcmp("CONVDIRECT", in_algorithm)==0) ALGORITHM = CONVDIRECT;
+  else if (strcmp("LOWERING",   in_algorithm)==0) ALGORITHM = LOWERING;
+  else if (strcmp("CONVGEMM",   in_algorithm)==0) ALGORITHM = CONVGEMM;
+  else                                            ALGORITHM = UNKNOWN;
+
+  if      (strcmp("B3A2C0",   in_gemm)==0) GEMM = B3A2C0;
+  else if (strcmp("A3B2C0",   in_gemm)==0) GEMM = A3B2C0;
+  else if (strcmp("BLIS",     in_gemm)==0) GEMM = BLIS;
+  else if (strcmp("OPENBLAS", in_gemm)==0) GEMM = OPENBLAS;
+  else if (strcmp("SDOT_GEMM",in_gemm)==0) GEMM = SDOT_GEMM;
+  else                                     GEMM = UNKNOWN;
+
+  #ifdef FP32
+    UK_TYPE      *uk_vec      = new_uk_asm_selector_fp32();
+    UK_EDGE_TYPE *uk_edge_vec = new_uk_asm_edge_selector_fp32();
+  #elif FP16
+    UK_TYPE      *uk_vec      = new_uk_intrinsic_selector_fp16();
+    UK_EDGE_TYPE *uk_edge_vec = NULL;
+  #elif INT8_INT32_U8
+    UK_TYPE      *uk_vec      = new_uk_intrinsic_selector_int8_int32_u8();
+    UK_EDGE_TYPE *uk_edge_vec = NULL;
+  #elif INT8_INT32_S8
+    UK_TYPE      *uk_vec      = new_uk_intrinsic_selector_int8_int32_s8();
+    UK_EDGE_TYPE *uk_edge_vec = NULL;
+  #else
+    printf("ERROR: Type unsupported\n");
+    exit(-1);
+  #endif
+
+  #if defined(FP32) || defined(FP16)
+    #ifndef A78AE
+      if ((ALGORITHM == LOWERING) && (GEMM == SDOT_GEMM)) {
+        printf(" ERROR: SDOT_GEMM only supported for INT8 - INT32 data type on A78AE Processor.\n\n"); exit(-1);
+      }
+    #endif
+  #endif
 
   #if defined(INT8)
     errorthd = 0.5;
@@ -244,8 +265,13 @@ int main(int argc, char *argv[]) {
         mr_init  = 8;
         nr_init  = 4;
       #endif
+      if ((ALGORITHM == LOWERING) &&  (GEMM == SDOT_GEMM)) {
+        mr_limit = 4;
+        nr_limit = 16;
+        mr_init  = 4;
+        nr_init  = 16;
+      }
     }
-
 
     best_error=0.0; best_flops=0.0; best_time = 0.0;
 
@@ -255,28 +281,21 @@ int main(int argc, char *argv[]) {
         MR = mr_iter;
         NR = nr_iter;
 
-	if (strcmp("SDOT_GEMM", GEMM)!=0) {
-          if (strcmp("CONVDIRECT", ALG)==0)
-	    fselector(NR, MR, uk_vec, uk_edge_vec, &uk, &uk_edge);
-	  else
-	    fselector(MR, NR, uk_vec, uk_edge_vec, &uk, &uk_edge);
+        if (ALGORITHM == CONVDIRECT) fselector(NR, MR, ALGORITHM, GEMM, uk_vec, uk_edge_vec, &uk, &uk_edge);
+	else                         fselector(MR, NR, ALGORITHM, GEMM, uk_vec, uk_edge_vec, &uk, &uk_edge);
   
-	  if (uk == NULL) continue;
+	if (uk == NULL) continue;
 	
-	}
-
-        if (strcmp("LOWERING", ALG)==0 || strcmp("CONVGEMM", ALG)==0) {
+        if ((ALGORITHM==LOWERING) || (ALGORITHM==CONVGEMM)) {
           if (model_on) {
-	    if (strcmp("A3B2C0", GEMM)==0)
+	    if (GEMM==A3B2C0)
               get_optim_mc_nc_kc(sizeof(C_TYPE), n_gemm, m_gemm, k_gemm, NR, MR, &COB, &WOB, &CIB, params);
 	    else
               get_optim_mc_nc_kc(sizeof(C_TYPE), m_gemm, n_gemm, k_gemm, MR, NR, &WOB, &COB, &CIB, params);
-
-	    //mc=WOB; nc=COB; kc=CIB
             mc_blis = WOB; nc_blis = COB; kc_blis = CIB;
 	  }
-          Ac_blis = (AB_TYPE *)aligned_alloc(32, TH*(MR+mc_blis)*(16 + kc_blis)*sizeof(AB_TYPE));
-          Bc_blis = (AB_TYPE *)aligned_alloc(32, TH*(16 + kc_blis)*(NR+nc_blis)*sizeof(AB_TYPE));
+          Ac_blis = (AB_TYPE *)aligned_alloc(32, TH * 10 * m_gemm * k_gemm * sizeof(AB_TYPE));
+          Bc_blis = (AB_TYPE *)aligned_alloc(32, TH * 10 * n_gemm * k_gemm * sizeof(AB_TYPE));
         } else {
           
 	  if (model_on) {
@@ -302,7 +321,7 @@ int main(int argc, char *argv[]) {
 
         }
     
-        if (strcmp("LOWERING", ALG)==0)
+        if (ALGORITHM==LOWERING)
           DEXT = (AB_TYPE *) malloc( (h*w*n)*(r*s*c)*sizeof(AB_TYPE));
           
         D = (AB_TYPE *) malloc( n*c*h*w*sizeof(AB_TYPE));
@@ -353,52 +372,58 @@ int main(int argc, char *argv[]) {
              print_tensor4D_int8( "F", c, r, s, k, F, ldF1, ldF2, ldF3 );
            #endif
          }
-    
-        if (strcmp("CONVDIRECT", ALG)==0)
-          transform_filter_block_blis(c, k, r, s, F,  ldF1,  ldF2,  ldF3,
-				      FB, ldFB1, ldFB2, ldFB3, ldFB4, tformat, 
-				      MR, NR);
+   
+
+	//Preparing lowering parameters.
+	mm = k;
+	nn = ho * wo * n;
+	kk = r * s * c;
+	alphap = 1.0;
+	betap  = 0.0;
+	lda = k;
+	ldb = r * s * c;
+	ldc = k;
+
+	//Prepacking weights. Convdirect and Lowering + SDOT
+        if (ALGORITHM == CONVDIRECT)
+          transform_filter_block_blis(c, k, r, s, F,  ldF1,  ldF2,  ldF3, FB, 
+			              ldFB1, ldFB2, ldFB3, ldFB4, tformat, MR, NR);
+
+	else if ((ALGORITHM == LOWERING) && (GEMM == SDOT_GEMM))
+	  prepack_dot_A( 'C', mm, kk, F, lda, Ac_blis, mc_blis, kc_blis, MR);
 
         time  = 0.0; 
         t1    = dclock();
         nreps = 0;
         while ( time <= tmin ) {
-          if (strcmp("LOWERING", ALG)==0) {
+          if (ALGORITHM == LOWERING) {
             im2row(DEXT, c * r * s, D, n, h, w, c, ho, wo, r,
 	           s, 0, 0, 1, 1, 1, 1, TH);
-	    mm = k;
-	    nn = ho * wo * n;
-	    kk = r * s * c;
-	    alphap = 1.0;
-	    betap  = 0.0;
-	    lda = k;
-	    ldb = r * s * c;
-	    ldc = k;
   
-            if (strcmp("BLIS", GEMM)==0) {
+            if (GEMM == BLIS) {
 	      #if defined(ENABLE_BLIS) && defined(FP32)
 	        sgemm_( "N", "N", &mm, &nn, &kk, &alphap, F, &lda, DEXT, &ldb, &betap, Y, &ldc );
 	      #else
 		printf("ERROR: BLIS unsupported for this data type.\n"); exit(-1);
               #endif
-	    } else if (strcmp("OPENBLAS", GEMM)==0) {
+	    } else if (GEMM == OPENBLAS) {
               #if defined(ENABLE_OPENBLAS) &&  defined(FP32)
 	        cblas_sgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, 
 		            mm, nn, kk, alphap, F, lda, DEXT, ldb, betap, Y, ldc);
 	      #else
 		printf("ERROR: OPENBLAS unsupported for this data type.\n"); exit(-1);
               #endif
-	    } else if (strcmp("B3A2C0", GEMM)==0) {
+	    } else if (GEMM == B3A2C0) {
               gemm_blis_B3A2C0( 'C', 'C', 'C', 'N', 'N', mm, nn, kk, 
                                 alphap, F, lda, DEXT, ldb, betap, Y, ldc,
                                 Ac_blis, Bc_blis, mc_blis, nc_blis, kc_blis, 
 				MR, NR, TH, testConf->LOOP, Ctmp, uk_vec, uk_edge_vec);
-	    } else if (strcmp("A3B2C0", GEMM)==0) {
+	    } else if (GEMM == A3B2C0) {
               gemm_blis_A3B2C0( 'C', 'C', 'C', 'N', 'N', mm, nn, kk, 
                                 alphap, F, lda, DEXT, ldb, betap, Y, ldc,
                                 Ac_blis, Bc_blis, mc_blis, nc_blis, kc_blis, 
 				MR, NR, TH, testConf->LOOP, Ctmp, uk_vec, uk_edge_vec);
-	    } else if (strcmp("SDOT_GEMM", GEMM)==0) {
+	    } else if (GEMM == SDOT_GEMM) {
 	      ldc = ho * wo * n;
               dot_gemm( 'C', 'C', 'R', mm, nn, kk, F, lda, DEXT, ldb, betap, Y, ldc,
 	               Ac_blis, Bc_blis, mc_blis, nc_blis, kc_blis, MR, NR);
@@ -406,7 +431,7 @@ int main(int argc, char *argv[]) {
 	      printf("ERROR: Algorithm unsupported.\n"); exit(-1);
 	    }
 
-          } else if (strcmp("CONVGEMM", ALG)==0) {
+          } else if (ALGORITHM == CONVGEMM) {
             conv_p conv_params = { n, h, w, c, k, r, s,
 	    vstride, hstride, vpadding, hpadding,
 	    vdilation, hdilation, ho, wo,
@@ -423,7 +448,7 @@ int main(int argc, char *argv[]) {
 				   nc_blis, kc_blis, MR, NR, TH, 
 				   Ctmp, uk_vec, uk_edge_vec);
 
-          } else if (strcmp("CONVDIRECT", ALG)==0) {
+          } else if (ALGORITHM == CONVDIRECT) {
             convDirect_block_blis(n, k, c, h, w, ho, wo, r, s, 
 	    		          D,  ldD1, ldD2,  ldD3, 
 	    		          FB, ldFB1, ldFB2, ldFB3, ldFB4,
@@ -451,7 +476,7 @@ int main(int argc, char *argv[]) {
 		              Yg, ldY1, ldY2, ldY3,
 		              tformat);
 
-	  if (strcmp("LOWERING", ALG)==0 && strcmp("SDOT_GEMM", GEMM)==0)  {
+	  if ((ALGORITHM==LOWERING) &&  (GEMM==SDOT_GEMM))  { //C row-major, convert to col-major
             C_TYPE *Y_tmp = (C_TYPE *) malloc (sizeof(C_TYPE) * n * ho * wo * k);
 	    convert_row2col(Y, Y_tmp, k, ho * wo * n);
 	    free(Y);
@@ -490,7 +515,7 @@ int main(int argc, char *argv[]) {
           #endif
         }
 	
-          if (strcmp("LOWERING", ALG)==0  && (strcmp("BLIS", GEMM)==0 || strcmp("OPENBLAS", GEMM)==0))
+          if ((ALGORITHM == LOWERING)  && (GEMM == BLIS || GEMM == OPENBLAS))
             printf(" | -    -  |   -         -        -    | %3d %5d %5d %5d %5d   (%1d,%1d)  | %s%-10.2e%s %-8.1e %8.1e |", n, k, c, ho, wo, r, s, COLOR_BOLDMAGENTA, GFLOPS, COLOR_RESET, time, error);
 	  else
             printf(" | %-3d  %-2d | %-8d %-8d %-8d| %3d %5d %5d %5d %5d   (%1d,%1d)  | %s%-10.2e%s %-8.1e %8.1e |", MR, NR, WOB, COB, CIB,  n, k, c, ho, wo, r, s, COLOR_BOLDMAGENTA, GFLOPS, COLOR_RESET, time, error);
@@ -517,10 +542,10 @@ int main(int argc, char *argv[]) {
     
         printf("\n");
     
-        if (strcmp("LOWERING", ALG)==0 || strcmp("CONVGEMM", ALG)==0) {
+        if ((ALGORITHM == LOWERING) || (ALGORITHM == CONVGEMM)) {
           free(Ac_blis); 
           free(Bc_blis);
-          if (strcmp("LOWERING", ALG)==0)
+          if (ALGORITHM == LOWERING)
             free(DEXT);
         } else {
           free(Ac); 

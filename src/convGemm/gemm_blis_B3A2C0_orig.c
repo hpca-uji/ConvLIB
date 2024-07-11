@@ -45,7 +45,7 @@ void convgemm_blis_B3A2C0(char orderA, char orderB, char orderC,
     UK_TYPE uk;
     UK_EDGE_TYPE uk_edge;
 
-    fselector(MR, NR, uk_vec, uk_edge_vec, &uk, &uk_edge);
+    fselector(MR, NR, CONVGEMM, UNKNOWN, uk_vec, uk_edge_vec, &uk, &uk_edge);
 
     //#ifdef FP32
       //uk_asm_selector_fp32(MR, NR, uk_vec, &uk);

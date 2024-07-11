@@ -3,10 +3,8 @@
 #define Ccol(a1,a2)  Cr[ (a2)*(ldC)+(a1) ]
 #define Crow(a1,a2)  Cr[ (a1)*(ldC)+(a2) ]
 
-void uk_intrinsic_quantize_int8_4x16_sdot(int kc, int8_t  *Ar, int8_t *Br, int32_t *Cr, int32_t beta, int ldC);
-
-
-void fselector(int MR, int NR, UK_TYPE *uk_vec, UK_EDGE_TYPE *uk_edge_vec, UK_TYPE *uk, UK_EDGE_TYPE *uk_edge) {
+//Micro-kernels selector
+void fselector(int MR, int NR, int ALGORITHM, int GEMM, UK_TYPE *uk_vec, UK_EDGE_TYPE *uk_edge_vec, UK_TYPE *uk, UK_EDGE_TYPE *uk_edge) {
 
   #ifdef FP32
     uk_asm_selector_fp32(MR, NR, uk_vec, uk);
@@ -15,18 +13,47 @@ void fselector(int MR, int NR, UK_TYPE *uk_vec, UK_EDGE_TYPE *uk_edge_vec, UK_TY
     uk_intrinsic_selector_fp16(MR, NR, uk_vec, uk);
     *uk_edge = *uk;
   #elif INT8_INT32_U8
-    uk_intrinsic_selector_int8_int32_u8(MR, NR, uk_vec, uk);
+    if ((ALGORITHM == LOWERING) && (GEMM == SDOT_GEMM))
+      *uk = uk_intrinsic_quantize_int8_4x16_sdot;
+    else
+      uk_intrinsic_selector_int8_int32_u8(MR, NR, uk_vec, uk);
     *uk_edge = *uk;
   #elif INT8_INT32_S8
-    uk_intrinsic_selector_int8_int32_s8(MR, NR, uk_vec, uk);
+    if ((ALGORITHM == LOWERING) && (GEMM == SDOT_GEMM))
+      *uk = uk_intrinsic_quantize_int8_4x16_sdot;
+    else
+      uk_intrinsic_selector_int8_int32_s8(MR, NR, uk_vec, uk);
     *uk_edge = *uk;
   #endif
 
 }
 
+
+//Generic micro-kernel for Lowering+GEMM based on DOT Products.
+void sdot_microkernel(int mr, int nr, int MR, int NR, AB_TYPE *A, AB_TYPE *B, 
+		         C_TYPE *C, uint32_t kc, uint32_t ldC, C_TYPE alpha, C_TYPE beta, 
+			 C_TYPE *aux, UK_TYPE uk, UK_EDGE_TYPE uk_edge) {
+  //WARNING: C stored by rows!
+  #if defined(INT8_INT32_U8) || defined(INT8_INT32_S8)
+    if (mr == MR && nr == NR)
+      uk(kc, A, B, C, beta, ldC);
+    else {
+      uk_edge(kc, A, B, aux, 0, NR); //NR Because C is stored by rows
+      for (int i = 0; i < mr; i++)
+      for (int j = 0; j < nr; j++)
+        C[i*ldC + j] = (beta) * C[i*ldC + j] + aux[i * NR + j];
+    }
+  #else
+    printf("Dot product only supported for INT8 - INT32 data types.\n");
+    exit(-1);
+  #endif
+
+}
+
+//Generic micro-kernel for other convolutional algorithms
 void generic_microkernel(int mr, int nr, int MR, int NR, AB_TYPE *A, AB_TYPE *B, 
-		                C_TYPE *C, uint32_t kc, uint32_t ldC, C_TYPE alpha, C_TYPE beta, 
-				C_TYPE *aux, UK_TYPE uk, UK_EDGE_TYPE uk_edge) {
+		         C_TYPE *C, uint32_t kc, uint32_t ldC, C_TYPE alpha, C_TYPE beta, 
+			 C_TYPE *aux, UK_TYPE uk, UK_EDGE_TYPE uk_edge) {
 
   #ifdef FP32
     if (mr == MR && nr == NR)
@@ -34,12 +61,6 @@ void generic_microkernel(int mr, int nr, int MR, int NR, AB_TYPE *A, AB_TYPE *B,
     else
       uk_edge(mr, nr, MR, NR, kc, &alpha, A, B, &beta, aux, C, ldC);
   #else
-    //uk = ukernel_intrinsic_vmull_16x8_ux2_int8_int32;
-    #ifdef SDOT
-    if ((mr == MR) && (nr == NR))
-      uk_intrinsic_quantize_int8_4x16_sdot(kc, A, B, C, beta, ldC);
-    else { printf("ERROR: Not implemented edge cases\n"); exit(-1); }
-    #else
     if ((mr == MR) && (nr == NR))
       uk(kc, A, B, C, beta, ldC);
     else {
@@ -48,7 +69,6 @@ void generic_microkernel(int mr, int nr, int MR, int NR, AB_TYPE *A, AB_TYPE *B,
       for (int i = 0; i < mr; i++)
         C[j*ldC + i] = (beta) * C[j*ldC + i] + aux[j * MR + i];
      }
-    #endif
   #endif
 
 }
@@ -57,7 +77,7 @@ void generic_microkernel(int mr, int nr, int MR, int NR, AB_TYPE *A, AB_TYPE *B,
 // MICRO-KERNELS FOR DOT PRODUCT
 //============================================================================================
 
-#ifdef SDOT
+#ifdef A78AE
 void uk_intrinsic_quantize_int8_4x16_sdot(int kc, int8_t  *Ar, int8_t *Br, int32_t *Cr, int32_t beta, int ldC) { 
 
   int KR = 16;

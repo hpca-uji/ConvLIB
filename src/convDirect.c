@@ -154,7 +154,7 @@ void convDirect_block_blis( int t, int Co, int Ci, int Ho,    int Wo,
   UK_TYPE uk;
   UK_EDGE_TYPE uk_edge;
 
-  fselector(NR, MR, uk_vec, uk_edge_vec, &uk, &uk_edge);
+  fselector(NR, MR, CONVDIRECT, UNKNOWN, uk_vec, uk_edge_vec, &uk, &uk_edge);
 
   //#ifdef FP32
     //uk_asm_selector_fp32(NR, MR, uk_vec, &uk);
