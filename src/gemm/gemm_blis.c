@@ -44,7 +44,8 @@ void gemm_blis_B3A2C0( char orderA, char orderB, char orderC,
 		       int MR, int NR, int TH, int loop, C_TYPE *Ctmp, 
 		       UK_TYPE *uk_vec, UK_EDGE_TYPE *uk_edge_vec) {
 
-  int ic, jc, pc, mc, nc, kc, ir, jr, mr, nr, j, i, th, th_id; 
+  int ic, jc, pc, mc, nc, kc, ir, jr, mr, nr, j, i, th, th_id, mc_pack; 
+
   C_TYPE  zero = 0.0, one = 1.0, beta_edge = 0.0, betaI, *Ctmp_th, *Cptr; 
   AB_TYPE *Aptr, *Bptr, *Acptr;
 
@@ -53,16 +54,6 @@ void gemm_blis_B3A2C0( char orderA, char orderB, char orderC,
 
   fselector(MR, NR, LOWERING, B3A2C0, uk_vec, uk_edge_vec, &uk, &uk_edge);
 
-  //#ifdef FP32
-    //uk_asm_selector_fp32(MR, NR, uk_vec, &uk);
-    //uk_asm_edge_selector_fp32(MR, NR, uk_edge_vec, &uk_edge);
-  //#elif FP16
-    //uk_intrinsic_selector_fp16(MR, NR, uk_vec, &uk);
-    //uk_edge = uk;
-  //#elif INT8_INT32
-    //uk_intrinsic_selector_int8_int32(MR, NR, uk_vec, &uk);
-    //uk_edge = uk;
-  //#endif
 
   #if defined(CHECK)
   #include "check_params.h"
@@ -77,6 +68,7 @@ void gemm_blis_B3A2C0( char orderA, char orderB, char orderC,
   if (TH == 1) {
     for ( jc=0; jc<n; jc+=NC ) {
       nc = min(n-jc, NC); 
+      Acptr = Ac;
       for ( pc=0; pc<k; pc+=KC ) {
         kc = min(k-pc, KC); 
         Bptr = &Bcol(pc,jc);
@@ -88,8 +80,9 @@ void gemm_blis_B3A2C0( char orderA, char orderB, char orderC,
         
 	for ( ic=0; ic<m; ic+=MC ) {
           mc = min(m-ic, MC); 
+
           Aptr = &Acol(ic, pc);
-          pack_RB( orderA, transA, mc, kc, Aptr, ldA, Ac, MR);
+          pack_RB( orderA, transA, mc, kc, Aptr, ldA, Acptr, MR);
           
           for (jr=0; jr<nc; jr+=NR ) {
             nr = min(nc-jr, NR); 
@@ -97,11 +90,18 @@ void gemm_blis_B3A2C0( char orderA, char orderB, char orderC,
               mr = min(mc-ir, MR); 
               Cptr = &Ccol(ic+ir,jc+jr);
 	      
-	      generic_microkernel(mr, nr, MR, NR, &Ac[ir*kc], &Bc[jr*kc], 
+	      generic_microkernel(mr, nr, MR, NR, &Acptr[ir*kc], &Bc[jr*kc], 
                                   Cptr, kc, ldC, alpha, betaI, Ctmp, uk, uk_edge);
+
+	     //gemm_base_Cresident(orderC, mr, nr, kc, alpha,
+                          //&Acptr[ir*kc], MR, &Bc[jr*kc], NR,
+                          //betaI, Cptr, ldC );
+
 
             }
           }
+        
+	  //Acptr += (mc / MR + MR) * kc; 
 
         }
       }
@@ -529,6 +529,36 @@ void pack_CB( char orderM, char transM, int mc, int nc,
 
 }
 
+void prepack_saxpy_A( char orderA, size_t m, size_t k, AB_TYPE *A, size_t ldA, AB_TYPE *Ac,
+	           size_t MC, size_t KC, int MR) {
+
+  int ic, pc, mc, kc, kc_pack, mc_pack; 
+  AB_TYPE *Aptr;
+
+
+  if ((m==0) || (k==0)) return;
+
+  for ( pc=0; pc<k; pc+=KC) {
+    kc = min(k-pc, KC); 
+    //kc_pack = (int)ceil((double)kc / 16.0) * 16;
+
+    for ( ic=0; ic<m; ic+=MC ) {
+      mc = min(m-ic, MC); 
+      //mc_pack = (int)ceil((double)mc / (double)MR) * MR;
+
+      if (orderA == 'C') Aptr = &Acol(ic, pc);
+      else               Aptr = &Arow(ic, pc);
+        	
+      //pack_dot_A(orderA, mc, kc, Aptr, ldA, Ac, MR);
+      pack_RB( orderA, 'N', mc, kc, Aptr, ldA, Ac, MR);
+
+      Ac += (mc / MR + MR) * kc;
+
+    }
+  }
+  
+}
+
 
 void gemm_base_Cresident( char orderC, int m, int n, int k, C_TYPE alpha, 
 		          AB_TYPE *A, int ldA, AB_TYPE *B, int ldB, 
@@ -583,9 +613,13 @@ void dot_gemm( char orderA, char orderB, char orderC,
 
   if ((m==0) || (n==0) || (k==0)) return;
 
+  //printf("m=%zu x n=%zu x k=%zu | mc=%zu x nc=%zu x kc=%zu\n", m, n, k, MC, NC, KC);
+  //(for (int i =0; i < KC * NC; i++) Bc[i] = 0;
+
   for ( jc=0; jc<n; jc+=NC ) {
     nc = min(n-jc, NC); 
     Acptr = Ac;
+
     for ( pc=0; pc<k; pc+=KC) {
       kc = min(k-pc, KC); 
       kc_pack = (int)ceil((double)kc / 16.0) * 16;
@@ -593,7 +627,7 @@ void dot_gemm( char orderA, char orderB, char orderC,
       if (orderB == 'C') Bptr = &Bcol(pc,jc);
       else               Bptr = &Brow(pc,jc);
        
-      pack_dot_B(orderB, kc, nc, Bptr, ldB, Bc, NR);
+      vpack_dot_B(orderB, kc, nc, Bptr, ldB, Bc, NR);
          
       if ( pc==0 ) betaI = beta;
       else betaI = one;
@@ -690,12 +724,9 @@ void pack_dot_B(char orderB, int kc, int nc, AB_TYPE *M, int ldM, AB_TYPE *Mc, i
             Mc[p] = Mcol(j + jj + 1, i + ii); p++;
             Mc[p] = Mcol(j + jj + 2, i + ii); p++;
             Mc[p] = Mcol(j + jj + 3, i + ii); p++;
-	    //printf("Mc[%3d]=%3d, %3d, %3d, %3d\n",p-1, Mc[p-4], Mc[p-3], Mc[p-2], Mc[p-1]);
           }
-	  //printf("NR=%d - nr=%d = %d: ii=%d\n", NR, nr, NR - nr, ii);
           for (ii=0; ii < NR - nr; ii++) { 
 	    Mc[p]=0;p++; Mc[p]=0;p++; Mc[p]=0;p++; Mc[p]=0;p++;
-	    //printf("Mc-mr_padding[%3d]=%3d, %3d, %3d, %3d\n",p-1, 0, 0, 0, 0);
 	  }
 	}
 
@@ -705,7 +736,7 @@ void pack_dot_B(char orderB, int kc, int nc, AB_TYPE *M, int ldM, AB_TYPE *Mc, i
               Mc[p] = Mcol(j + jjj, i + ii); p++;
 	      //printf("Mc-kc_left[%3d]=%3d\n",p-1, Mc[p-1]);
 	    }
-	    for (jjj = 0; jjj < kc_4_padding; jjj++) { //kc padding (full 4 values)
+	    for (jjj = 0; jjj < kc_4_padding; jjj++) { 
 	      Mc[p] = 0; p++; 
 	      //printf("Mc-kc_padding[%3d]=%3d\n",p-1, 0); 
 	    }
@@ -720,6 +751,60 @@ void pack_dot_B(char orderB, int kc, int nc, AB_TYPE *M, int ldM, AB_TYPE *Mc, i
 
 
   } else { printf("Not implemented\n"); exit(-1); }
+
+  //printf("-------------------------------------------------------------------\n");
+  //for (int i = 0; i < nc * (kc + KR); i++) { printf("%d, ", Mc[i]); if (i % 4 == 0) printf("\n");} printf("\n");
+}
+
+void vpack_dot_B(char orderB, int kc, int nc, AB_TYPE *M, int ldM, AB_TYPE *Mc, int NR) {
+  int p = 0;
+  
+  //16 values int8_t for a vectorial register
+  int KR = 16; 
+  int kr_lim, i, j, jj, jjj, ii;
+
+  int kc_4_padding = 4 - kc % 4;
+  int kc_padding   = kc % 16;
+
+  int nr;
+
+  //printf("Packing B (kc=%d x nc=%d):\n", kc, nc);
+  if (orderB == 'C') {
+    for (i = 0; i < nc; i += NR) {
+      nr = min(NR, nc - i);
+      for (j = 0; j < kc; j += KR) {
+	kr_lim = min(KR, kc - j);
+	for (jj =0 ; jj < kr_lim - 3; jj += 4) {
+          for (ii =0 ; ii < nr; ii++) {
+            Mc[p] = Mcol(j + jj + 0, i + ii); p++;
+            Mc[p] = Mcol(j + jj + 1, i + ii); p++;
+            Mc[p] = Mcol(j + jj + 2, i + ii); p++;
+            Mc[p] = Mcol(j + jj + 3, i + ii); p++;
+          }
+
+          //for (ii=0; ii < NR - nr; ii++) { 
+	  //Mc[p]=0;p++; Mc[p]=0;p++; Mc[p]=0;p++; Mc[p]=0;p++;
+	  //}
+	  p += 4 * (NR - nr);
+	}
+
+	if (jj != KR) {
+          for (ii =0 ; ii < nr; ii++) {
+            for (jjj=jj; jjj < kr_lim; jjj++) { //kc left
+              Mc[p] = Mcol(j + jjj, i + ii); p++;
+	    }
+	    //kc padding (full 4 values)
+	    //for (jjj = 0; jjj < kc_4_padding; jjj++) { Mc[p] = 0; p++; }
+	    p += kc_4_padding;
+	  }
+	  
+          //for (jjj=0; jjj < nr * (KR - (kr_lim + kc_4_padding)); jjj++) {Mc[p] = 0; p++;}
+	  p += nr * (KR - (kr_lim + kc_4_padding));
+        }
+
+      }
+    }
+  } else { printf("ERROR: B Matrix in Row-major not supported.\n"); }
 
   //printf("-------------------------------------------------------------------\n");
   //for (int i = 0; i < nc * (kc + KR); i++) { printf("%d, ", Mc[i]); if (i % 4 == 0) printf("\n");} printf("\n");
@@ -755,9 +840,9 @@ void prepack_dot_B( char orderB, size_t n, size_t k, AB_TYPE *B, size_t ldB, AB_
 
 }
 
+
 void prepack_dot_A( char orderA, size_t m, size_t k, AB_TYPE *A, size_t ldA, AB_TYPE *Ac,
 	           size_t MC, size_t KC, int MR) {
-
 
   int ic, pc, mc, kc, kc_pack, mc_pack; 
   AB_TYPE *Aptr;
@@ -783,6 +868,7 @@ void prepack_dot_A( char orderA, size_t m, size_t k, AB_TYPE *A, size_t ldA, AB_
   }
   
 }
+
 
 //=======================================================================================
 //=======================================================================================

@@ -45,7 +45,7 @@ double dclock() {
 void generate_tensor4D( int m1, int m2, int m3, int m4, AB_TYPE *T, int ldT1, int ldT2, int ldT3 ) {
  //Generate a 4D tensor with random entries. 
   int i1, i2, i3, i4;
-
+  float tmp;
   for ( i1=0; i1<m1; i1++ )
   for ( i2=0; i2<m2; i2++ )
   for ( i3=0; i3<m3; i3++ )
@@ -53,7 +53,8 @@ void generate_tensor4D( int m1, int m2, int m3, int m4, AB_TYPE *T, int ldT1, in
   #if defined(INT8_INT32_S8) || defined(INT8_INT32_U8)
     Trow4D(i1,i2,i3,i4) = (AB_TYPE)rand() % (12) + 1;
   #elif FP16
-    Trow4D(i1,i2,i3,i4) = i1;
+    tmp = rand() / RAND_MAX;
+    Trow4D(i1,i2,i3,i4) = (AB_TYPE)(tmp + 1);
   #else
     Trow4D(i1,i2,i3,i4) = (AB_TYPE)rand() / RAND_MAX;
   #endif

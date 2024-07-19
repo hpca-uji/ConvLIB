@@ -22,14 +22,14 @@ void ukernel_intrinsic_8x8_fp16(int kc, float16_t *Ar, float16_t *Br, float16_t 
     vinit_fp16(C06, 0);
     vinit_fp16(C07, 0);
   } else {
-    vloadC_fp16(C00, &Crref(0, 0));
-    vloadC_fp16(C01, &Crref(0, 1));
-    vloadC_fp16(C02, &Crref(0, 2));
-    vloadC_fp16(C03, &Crref(0, 3));
-    vloadC_fp16(C04, &Crref(0, 4));
-    vloadC_fp16(C05, &Crref(0, 5));
-    vloadC_fp16(C06, &Crref(0, 6));
-    vloadC_fp16(C07, &Crref(0, 7));
+    C00 = vld1q_f16(&Crref(0, 0));
+    C01 = vld1q_f16(&Crref(0, 1));
+    C02 = vld1q_f16(&Crref(0, 2));
+    C03 = vld1q_f16(&Crref(0, 3));
+    C04 = vld1q_f16(&Crref(0, 4));
+    C05 = vld1q_f16(&Crref(0, 5));
+    C06 = vld1q_f16(&Crref(0, 6));
+    C07 = vld1q_f16(&Crref(0, 7));
   }
 
   for (pr=0; pr<kc; pr++) { // Loop L6

@@ -69,8 +69,7 @@
 int main(int argc, char *argv[]) {
   char* variant;
 
-  AB_TYPE *D, *DEXTr,*F, *DT, *FB, *DEXT, *Ac, *Ac_blis, *Bc_blis;
-
+  AB_TYPE *D, *F, *DT, *FB, *DEXT, *Ac, *Ac_blis, *Bc_blis;
   C_TYPE *Y, *Yg, *Ctmp, alphap, betap;
   
   size_t mc_blis, nc_blis, kc_blis;
@@ -258,8 +257,8 @@ int main(int argc, char *argv[]) {
       #elif FP16
         mr_limit = 40;
         nr_limit = 40;
-        mr_init  = 8;
-        nr_init  = 8;
+        mr_init  = 4;
+        nr_init  = 4;
       #else
         mr_limit = 24;
         nr_limit = 24;
@@ -322,14 +321,10 @@ int main(int argc, char *argv[]) {
 
         }
     
-        if (ALGORITHM==LOWERING) {
-          DEXT  = (AB_TYPE *) malloc( h*w*n*r*s*c*sizeof(AB_TYPE));
-          //Input by rows. Only for sdot product!
-          DEXTr = (AB_TYPE *) malloc( h*w*n*r*s*c*sizeof(AB_TYPE));
-	}
-
-        D    = (AB_TYPE *) malloc( n*c*h*w*sizeof(AB_TYPE));
-
+        if (ALGORITHM==LOWERING)
+          DEXT = (AB_TYPE *) malloc( (h*w*n)*(r*s*c)*sizeof(AB_TYPE));
+          
+        D = (AB_TYPE *) malloc( n*c*h*w*sizeof(AB_TYPE));
         F = (AB_TYPE *) malloc( k*c*r*s*sizeof(AB_TYPE));   
         Y = (C_TYPE *) malloc( n*k*h*w*sizeof(C_TYPE));
           
@@ -362,7 +357,6 @@ int main(int argc, char *argv[]) {
         generate_tensor4D( n, h, w, c, D, ldD1, ldD2, ldD3 );
         generate_tensor4D( c, r, s, k, F, ldF1, ldF2, ldF3 );
 
-
         // Set result to zeros
 	for (int i=0; i < n * k * ho * wo; i++) { Y[i]=0; Yg[i]=0; }
 
@@ -394,11 +388,9 @@ int main(int argc, char *argv[]) {
         if (ALGORITHM == CONVDIRECT)
           transform_filter_block_blis(c, k, r, s, F,  ldF1,  ldF2,  ldF3, FB, 
 			              ldFB1, ldFB2, ldFB3, ldFB4, tformat, MR, NR);
-	else if (ALGORITHM == LOWERING) 
-	  if(GEMM == SDOT_GEMM)
-	    prepack_dot_A( 'C', mm, kk, F, lda, Ac_blis, mc_blis, kc_blis, MR);
-	  else if(GEMM == B3A2C0)
-	    prepack_saxpy_A( 'C', mm, kk, F, lda, Ac_blis, mc_blis, kc_blis, MR);
+
+	else if ((ALGORITHM == LOWERING) && (GEMM == SDOT_GEMM))
+	  prepack_dot_A( 'C', mm, kk, F, lda, Ac_blis, mc_blis, kc_blis, MR);
 
         time  = 0.0; 
         t1    = dclock();
@@ -433,7 +425,7 @@ int main(int argc, char *argv[]) {
 				MR, NR, TH, testConf->LOOP, Ctmp, uk_vec, uk_edge_vec);
 	    } else if (GEMM == SDOT_GEMM) {
 	      ldc = ho * wo * n;
-              dot_gemm( 'C', 'C', 'R', mm, nn, kk, F, lda, DEXT, ldb, betap, Y, ldc,
+              dot_gemm( 'R', 'R', 'R', mm, nn, kk, F, lda, DEXT, ldb, betap, Y, ldc,
 	               Ac_blis, Bc_blis, mc_blis, nc_blis, kc_blis, MR, NR);
 	    } else {
 	      printf("ERROR: Algorithm unsupported.\n"); exit(-1);
@@ -500,7 +492,7 @@ int main(int argc, char *argv[]) {
             tmp = (double) Ygrow_NHWC(in,ik,ih,iw);
             nrm += tmp*tmp;
             tmp = (double) dabs(Yrow_NHWC(in,ik,ih,iw)-Ygrow_NHWC(in,ik,ih,iw));
-            //printf("[%d, %d, %d, %d], Y=%.4f - Yg=%.4f\n", in, ik, ih, iw, Yrow_NHWC(in,ik,ih,iw), Ygrow_NHWC(in,ik,ih,iw));
+            //printf("[%d, %d, %d, %d], Y=%d - Yg=%d\n", in, ik, ih, iw, Yrow_NHWC(in,ik,ih,iw), Ygrow_NHWC(in,ik,ih,iw));
 	    error += tmp*tmp;
           }
           if ( nrm!=0.0 )
@@ -553,10 +545,8 @@ int main(int argc, char *argv[]) {
         if ((ALGORITHM == LOWERING) || (ALGORITHM == CONVGEMM)) {
           free(Ac_blis); 
           free(Bc_blis);
-          if (ALGORITHM == LOWERING){
+          if (ALGORITHM == LOWERING)
             free(DEXT);
-            free(DEXTr);
-	  }
         } else {
           free(Ac); 
           free(FB);
