@@ -64,7 +64,7 @@ typedef struct {
 
 
 typedef void (*pack_func)(char orderM, char transM, int mc, int nc, const AB_TYPE *M, 
-		          int ldM, AB_TYPE *Mc, int RR, const conv_p *conv_p, 
+		          int ldM, AB_PACK_TYPE *Mc, int RR, const conv_p *conv_p, 
 			  int start_row, int start_col);
 
 typedef void (*post_func)(int mr, int nr, const C_TYPE *Cc, int ldCc, C_TYPE beta, 
@@ -74,11 +74,11 @@ typedef void (*post_func)(int mr, int nr, const C_TYPE *Cc, int ldCc, C_TYPE bet
 void convgemm_blis_B3A2C0(char orderA, char orderB, char orderC, char transA, 
 		          char transB, int m, int n, int k, C_TYPE alpha,
                           const AB_TYPE *A, int ldA, const AB_TYPE *B, int ldB,
-                          C_TYPE beta, C_TYPE *C, int ldC, AB_TYPE *Ac, 
-			  pack_func pack_RB, AB_TYPE *Bc, pack_func pack_CB,
+                          C_TYPE beta, C_TYPE *C, int ldC, AB_PACK_TYPE *Ac, 
+			  pack_func pack_RB, AB_PACK_TYPE *Bc, pack_func pack_CB,
                           const conv_p *conv_params, int MC, int NC, int KC, 
 			  int MR, int NR, int TH, C_TYPE *Ctmp, 
 			  UK_TYPE *uk, UK_EDGE_TYPE *uk_edge);
 
-void pack_RB_convgemm(char, char, int, int, const AB_TYPE *, int, AB_TYPE *, int, const conv_p *, int, int);
+void pack_RB_convgemm(char, char, int, int, const AB_TYPE *, int, AB_PACK_TYPE *, int, const conv_p *, int, int);
 

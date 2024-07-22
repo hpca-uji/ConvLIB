@@ -30,8 +30,8 @@ void convgemm_blis_B3A2C0(char orderA, char orderB, char orderC,
                            C_TYPE alpha, const AB_TYPE *A, int ldA,
                            const AB_TYPE *B, int ldB,
                            C_TYPE beta, C_TYPE *C, int ldC,
-                           AB_TYPE *Ac, pack_func pack_RB,
-                           AB_TYPE *Bc, pack_func pack_CB,
+                           AB_PACK_TYPE *Ac, pack_func pack_RB,
+                           AB_PACK_TYPE *Bc, pack_func pack_CB,
                            const conv_p *conv_params,
 			   int MC, int NC, int KC, int MR, int NR, int TH, C_TYPE *Ctmp,
 			   UK_TYPE *uk_vec, UK_EDGE_TYPE *uk_edge_vec) {
@@ -45,7 +45,7 @@ void convgemm_blis_B3A2C0(char orderA, char orderB, char orderC,
     UK_TYPE uk;
     UK_EDGE_TYPE uk_edge;
 
-    fselector(MR, NR, uk_vec, uk_edge_vec, &uk, &uk_edge);
+    fselector(MR, NR, CONVGEMM, UNKNOWN, uk_vec, uk_edge_vec, &uk, &uk_edge);
 
     //#ifdef FP32
       //uk_asm_selector_fp32(MR, NR, uk_vec, &uk);

@@ -640,6 +640,95 @@ def micro_kernel_fp32_generator(arch, MR, NR, lane, dtype, vlen, macros, cfile, 
     
     return True
 
+def micro_kernel_int32_generator(arch, MR, NR, lane, dtype, vlen, macros, cfile, hfile):
+    
+    vMR = MR // vlen
+    vNR = NR // vlen
+
+    #--------------------------------------
+    # Headers
+    #--------------------------------------
+    if macros:
+        hfile.write(f"#include <arm_neon.h>\n")
+        hfile.write(f"#include <stdio.h>\n")
+        hfile.write(f"#include <stdint.h>\n")
+        hfile.write(f"#include <stdlib.h>\n\n")
+        hfile.write(f"\ntypedef void (*uk_intrinsic_{dtype})(int, int32_t *, int32_t *, int32_t *, int32_t, int );\n")
+        hfile.write(f"\nuk_intrinsic_{dtype} *new_uk_intrinsic_selector_{dtype}();\n")
+        hfile.write(f"\nvoid uk_intrinsic_selector_{dtype}(int mr, int nr, uk_intrinsic_{dtype} *uk_vec, uk_intrinsic_{dtype} *ukr);\n")
+        #hfile.write(f"\nvoid ukernel_intrinsic_{MR}x{NR}_{dtype}(int kc, float  *Ar, float *Br, float *Cr, float beta, int Clda);\n") 
+
+    #--------------------------------------
+    # Micro-kernel implementation
+    #--------------------------------------
+    micro = ""
+    
+    if macros:
+        micro += f"#include \"uKernels_intrinsic_{dtype}.h\"\n"
+        micro += f"#define Crref(i,j)  Cr[j*Clda+i]\n"
+
+        micro += f"#define vinit_{dtype}(vreg, value)   vreg = vmovq_n_s32(value)\n"
+        micro += f"#define vloadC_{dtype}(vreg, mem)    vreg=vld1q_s32(mem)\n"
+        micro += f"#define vstoreC_{dtype}(mem, vreg)   vst1q_s32(mem, vreg)\n"
+        micro += f"#define vload_{dtype}(vreg, mem) vreg=vld1q_s32(mem)\n"
+        micro += f"#define vupdate_lane_{dtype}(vreg1, vreg2, vreg3, lane) vreg1=vmlaq_laneq_s32(vreg1, vreg2, vreg3, lane)\n\n"
+
+    micro += f"void ukernel_intrinsic_{MR}x{NR}_{dtype}(int kc, int32_t  *Ar, int32_t *Br, int32_t *Cr, int32_t beta, int Clda){{\n"
+    micro += "  int pr, bA = 0, bB = 0;\n"
+    micro += "  int32x4_t  vtmp;\n"
+    micro += "  int32x4_t "
+    abregs = ""
+    for mr in range(0, vMR):
+        abregs += f" A{mr}, "
+    blim =vNR
+    if (NR % vlen != 0):
+        blim += 1
+    for nr in range(0, blim):
+        abregs += f" B{nr}, "
+    micro += abregs[:-2] + ";\n"
+    micro += "  int32x4_t "
+    cregs  = ""
+    for mr in range(0, vMR):
+        for nr in range(0, NR):
+            cregs += f" C{mr}{nr}, "
+    micro += cregs[:-2] + ";\n\n"
+    micro += "  if (beta == 0) {\n"
+    for mr in range(0, vMR):
+        for nr in range(0, NR):
+            micro += f"    vinit_{dtype}(C{mr}{nr}, 0);\n"
+    micro += "  } else {\n"
+    for mr in range(0, vMR):
+        for nr in range(0, NR):
+            micro += f"    vloadC_{dtype}(C{mr}{nr}, &Crref({mr*vlen}, {nr}));\n"
+    micro += "  }\n\n"
+
+    micro += "  for (pr=0; pr<kc; pr++) { // Loop L6\n"
+    for ar in range(0, vMR):
+        micro += f"    vload_{dtype}(A{ar}, &Ar[bA + {ar * vlen}]);\n"
+
+    for br in range(0, vNR):
+        micro += f"    vload_{dtype}(B{br}, &Br[bB + {br * vlen}]);\n"
+
+
+    for mr in range(0, vMR):
+        for nr in range(0, vNR):
+            for lane in range(0, vlen):
+                micro += f"    vupdate_lane_{dtype}(C{mr}{nr*vlen+lane}, A{mr}, B{nr}, {lane}); \n"
+
+    micro += f"    bA+={MR};\n"
+    micro += f"    bB+={NR};\n"
+
+    micro += "  }\n\n"
+
+    for mr in range(0, vMR):
+        for nr in range(0, NR):
+            micro += f"  vstoreC_{dtype}(&Crref({mr*vlen},{nr}), C{mr}{nr}); \n"
+    micro += "}\n"
+
+    cfile.write(micro)
+    
+    return True
+
 def micro_kernel_fp16_generator(arch, MR, NR, lane, dtype, vlen, macros, cfile, hfile):
     
     vMR = MR // vlen
@@ -742,7 +831,7 @@ def main() -> int:
     lane  = not args.dup
 
    
-    for dtype in ["int8_int32_u8", "int8_int32_s8", "fp32", "fp16"]:
+    for dtype in ["int8_int32", "fp32", "int32", "fp16"]:
 
         cpath = os.path.dirname(os.path.abspath(__file__)) + "/ukernels/uKernels_intrinsic_"+dtype+".c"
         hpath = os.path.dirname(os.path.abspath(__file__)) + "/ukernels/uKernels_intrinsic_"+dtype+".h"
@@ -770,12 +859,10 @@ def main() -> int:
 
         for mr in range(stepMR, maxMR, stepMR):
             for nr in range(stepNR, maxNR, stepNR):
-                if dtype == "int8_int32_s8":
+                if dtype == "int8_int32":
                     vlen = 4
                     micro_kernel_int8_int32_s8_generator(arch, mr, nr, lane, dtype, vlen, macros, cfile, hfile)
-                elif dtype == "int8_int32_u8":
-                    vlen = 4
-                    micro_kernel_int8_int32_u8_generator(arch, mr, nr, lane, dtype, vlen, macros, cfile, hfile)
+                    #micro_kernel_int8_int32_u8_generator(arch, mr, nr, lane, dtype, vlen, macros, cfile, hfile)
                 elif dtype == "int8_int16":
                     vlen = 8
                     if mr % 8 != 0:
@@ -784,6 +871,9 @@ def main() -> int:
                 elif dtype == "fp32":
                     vlen = 4
                     micro_kernel_fp32_generator(arch, mr, nr, lane, dtype, vlen, macros, cfile, hfile)
+                elif dtype == "int32":
+                    vlen = 4
+                    micro_kernel_int32_generator(arch, mr, nr, lane, dtype, vlen, macros, cfile, hfile)
                 else:
                     vlen = 8
                     micro_kernel_fp16_generator(arch, mr, nr, lane, dtype, vlen, macros, cfile, hfile)
@@ -798,14 +888,14 @@ def main() -> int:
 
         print("")
         print("+============================================================+")
-        if dtype == "int8_int32_u8":
-            print(f"| INTRINSICS MICRO-KERNEL GENERATOR: %sINT8-INT32 (U8)%s         |" % (bcolor.WARNING, bcolor.ENDC))
-        elif dtype == "int8_int32_s8":
-            print(f"| INTRINSICS MICRO-KERNEL GENERATOR: %sINT8-INT32 (S8)%s         |" % (bcolor.WARNING, bcolor.ENDC))
-        elif dtype == "int8_int16":
-            print(f"| INTRINSICS MICRO-KERNEL GENERATOR: %sINT8-INT16%s              |" % (bcolor.WARNING, bcolor.ENDC))
+        if dtype == "int8_int32":
+            print(f"| INTRINSICS MICRO-KERNEL GENERATOR: %sINT8-INT32%s              |" % (bcolor.WARNING, bcolor.ENDC))
         elif dtype == "fp32":
             print(f"| INTRINSICS MICRO-KERNEL GENERATOR: %sFP32%s                    |" % (bcolor.WARNING, bcolor.ENDC))
+        elif dtype == "int32":
+            print(f"| INTRINSICS MICRO-KERNEL GENERATOR: %sINT32%s                    |" % (bcolor.WARNING, bcolor.ENDC))
+        elif dtype == "int8_int16":
+            print(f"| INTRINSICS MICRO-KERNEL GENERATOR: %sINT8-INT16%s              |" % (bcolor.WARNING, bcolor.ENDC))
         else:
             print(f"| INTRINSICS MICRO-KERNEL GENERATOR: %sFP16%s                    |" % (bcolor.WARNING, bcolor.ENDC))
         print("+=======================================+====================+")

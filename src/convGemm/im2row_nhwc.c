@@ -25,7 +25,7 @@
 /*
  * BLIS pack for M-->Mc using implicit im2row
 */
-void pack_CB_nhwc(char orderM, char transM, int mc, int nc, const AB_TYPE *restrict M, int ldM, AB_TYPE *restrict Mc,
+void pack_CB_nhwc(char orderM, char transM, int mc, int nc, const AB_TYPE *restrict M, int ldM, AB_PACK_TYPE *restrict Mc,
                   int RR, const conv_p *conv_params, int start_row, int start_col) {
     if (((transM == 'N') && (orderM == 'C')) || ((transM == 'T') && (orderM == 'R'))) {
         // initial kernel positions
