@@ -21,7 +21,7 @@ void im2row_nhwc(float *rows, int ld, const float *in, int batches, int height, 
                  int oheight, int owidth, int kheight, int kwidth, int vpadding, int hpadding,
                  int vstride, int hstride, int vdilation, int hdilation);
 
-void pack_CB_nhwc(char orderM, char transM, int mc, int nc, const AB_TYPE *M, int ldM, AB_TYPE *Mc, int RR,
+void pack_CB_nhwc(char orderM, char transM, int mc, int nc, const AB_TYPE *M, int ldM, AB_PACK_TYPE *Mc, int RR,
                   const conv_p *conv_params, int start_row, int start_col);
 
 void row2im_nhwc(int m, int n, const float *rows, int ld, float *out, int batches, int height, int width, int channels,

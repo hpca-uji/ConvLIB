@@ -11,54 +11,71 @@
 #if FP16
   #include "intrinsic_generator/ukernels/uKernels_intrinsic_fp16.h"
 #else
-  #include "intrinsic_generator/ukernels/uKernels_intrinsic_int8_int32_s8.h"
-  #include "intrinsic_generator/ukernels/uKernels_intrinsic_int8_int32_u8.h"
+  #include "intrinsic_generator/ukernels/uKernels_intrinsic_int8_int32.h"
+  #include "intrinsic_generator/ukernels/uKernels_intrinsic_int32.h"
 #endif
 
-//Convlutional algorithms
+//Algorithms
 #define CONVDIRECT 0
 #define LOWERING   1
 #define CONVGEMM   2
+#define GEMM       3
 
 //GEMMs for Lowering aproach
-#define B3A2C0     3
-#define A3B2C0     4
-#define BLIS       5
-#define OPENBLAS   6
-#define SDOT_GEMM  7
+#define B3A2C0     4
+#define A3B2C0     5
+#define BLIS       6
+#define OPENBLAS   7
+#define SDOT_GEMM  8
 
 #define UNKNOWN    101
 
-#ifdef FP32
+#ifdef NQ_FP32
   #define AB_TYPE        float
+  #define AB_PACK_TYPE   float
   #define C_TYPE         float
   #define UK_TYPE        uk_asm_fp32
   #define UK_EDGE_TYPE   uk_asm_edge_fp32
+#elif FQ_FP32
+  #define AB_TYPE        int8_t
+  #define AB_PACK_TYPE   float
+  #define C_TYPE         float
+  #define UK_TYPE        uk_asm_fp32
+  #define UK_EDGE_TYPE   uk_asm_edge_fp32
+#elif NQ_INT32
+  #define AB_TYPE        int32_t
+  #define AB_PACK_TYPE   int32_t
+  #define C_TYPE         int32_t
+  #define UK_TYPE        uk_intrinsic_int32
+  #define UK_EDGE_TYPE   uk_intrinsic_int32
+#elif FQ_INT32
+  #define AB_TYPE        int8_t
+  #define AB_PACK_TYPE   int32_t
+  #define C_TYPE         int32_t
+  #define UK_TYPE        uk_intrinsic_int32
+  #define UK_EDGE_TYPE   uk_intrinsic_int32
+#elif Q_INT8_INT32
+  #define AB_TYPE        int8_t
+  #define AB_PACK_TYPE   int8_t
+  #define C_TYPE         int32_t
+  #define UK_TYPE        uk_intrinsic_int8_int32
+  #define UK_EDGE_TYPE   uk_intrinsic_int8_int32
 #elif FP16
   #define AB_TYPE        float16_t
+  #define AB_PACK_TYPE   float16_t
   #define C_TYPE         float16_t
   #define UK_TYPE        uk_intrinsic_fp16
   #define UK_EDGE_TYPE   uk_intrinsic_fp16
-#elif INT8_INT32_U8
-  #define AB_TYPE       int8_t
-  #define C_TYPE        int32_t
-  #define UK_TYPE       uk_intrinsic_int8_int32_u8
-  #define UK_EDGE_TYPE  uk_intrinsic_int8_int32_u8
-#elif INT8_INT32_S8
-  #define AB_TYPE       int8_t
-  #define C_TYPE        int32_t
-  #define UK_TYPE       uk_intrinsic_int8_int32_s8
-  #define UK_EDGE_TYPE  uk_intrinsic_int8_int32_s8
 #endif
 
-void fselector(int MR, int NR, int ALGORITHM, int GEMM, UK_TYPE *uk_vec, UK_EDGE_TYPE *uk_edge_vec, 
+void fselector(int MR, int NR, int algorithm, int gemm, UK_TYPE *uk_vec, UK_EDGE_TYPE *uk_edge_vec, 
 	       UK_TYPE *uk, UK_EDGE_TYPE *uk_edge);
 
-void generic_microkernel(int mr, int nr, int MR, int NR, AB_TYPE *A, AB_TYPE *B, 
+void generic_microkernel(int mr, int nr, int MR, int NR, AB_PACK_TYPE *A, AB_PACK_TYPE *B, 
 		         C_TYPE *C, uint32_t kc, uint32_t ldC, C_TYPE alpha, C_TYPE beta, 
 			 C_TYPE *aux, UK_TYPE uk, UK_EDGE_TYPE uk_edge);
 
-void sdot_microkernel(int mr, int nr, int MR, int NR, AB_TYPE *A, AB_TYPE *B, 
+void sdot_microkernel(int mr, int nr, int MR, int NR, AB_PACK_TYPE *A, AB_PACK_TYPE *B, 
 		         C_TYPE *C, uint32_t kc, uint32_t ldC, C_TYPE alpha, C_TYPE beta, 
 			 C_TYPE *aux, UK_TYPE uk, UK_EDGE_TYPE uk_edge);
 

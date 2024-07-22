@@ -29,13 +29,23 @@ BLIS_ENABLE     = F
 
 
 #----------------------------------------------------------
-#Convolution Data Type. Options Availables:
-#  [*] FP32
-#  [*] FP16
-#  [*] INT8_INT32_U8
-#  [*] INT8_INT32_S8
+#Convolution Data Type. 
 #----------------------------------------------------------
-DTYPE = FP16
+# Options availables for Direct Convolution:
+#  [*] NQ_FP32        #Only float data arithmetic
+#  [*] NQ_FP16        #Only float16 data arithmetic
+#  [*] Q_INT8_INT32   #Quantization int8 to int32
+#----------------------------------------------------------
+# Options availables for GEMM:
+#  [*] NQ_FP32        #Input:FP32  + Pack:FP32  + Micro:FP32
+#  [*] NQ_INT32       #Input:INT32 + Pack:INT32 + Micro:INT32
+#  [*] FQ_FP32        #Input:INT8  + Pack:FP32  + Micro:FP32
+#  [*] FQ_INT32       #Input:INT8  + Pack:FP32  + Micro:FP32
+#  [*] Q_INT8_INT32   #Input:INT8  + Pack:INT8  + Micro:INT8+INT32
+#  [] NQ_FP16        #Input:FP16  + Pack:FP16  + Micro:FP16
+#  [] FQ_FP16        #Input:INT8  + Pack:FP32  + Micro:FP32
+#----------------------------------------------------------
+DTYPE = Q_INT8_INT32
 #----------------------------------------------------------
 
 

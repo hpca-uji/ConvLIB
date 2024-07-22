@@ -40,14 +40,15 @@ void gemm_blis_B3A2C0( char orderA, char orderB, char orderC,
                        char transA, char transB, size_t m, size_t n, size_t k, 
                        C_TYPE alpha, AB_TYPE *A, size_t ldA, AB_TYPE *B, 
 		       size_t ldB, C_TYPE beta, C_TYPE *C, size_t ldC, 
-		       AB_TYPE *Ac, AB_TYPE *Bc, size_t MC, size_t NC, size_t KC, 
+		       AB_PACK_TYPE *Ac, AB_PACK_TYPE *Bc, size_t MC, size_t NC, size_t KC, 
 		       int MR, int NR, int TH, int loop, C_TYPE *Ctmp, 
 		       UK_TYPE *uk_vec, UK_EDGE_TYPE *uk_edge_vec) {
 
   int ic, jc, pc, mc, nc, kc, ir, jr, mr, nr, j, i, th, th_id, mc_pack; 
 
   C_TYPE  zero = 0.0, one = 1.0, beta_edge = 0.0, betaI, *Ctmp_th, *Cptr; 
-  AB_TYPE *Aptr, *Bptr, *Acptr;
+  AB_TYPE *Aptr, *Bptr;
+  AB_PACK_TYPE *Acptr;
 
   UK_TYPE uk;
   UK_EDGE_TYPE uk_edge;
@@ -267,13 +268,14 @@ void gemm_blis_B3A2C0( char orderA, char orderB, char orderC,
 void gemm_blis_A3B2C0( char orderA, char orderB, char orderC, 
 		       char transA, char transB, size_t m, size_t n, size_t k, 
 		       C_TYPE alpha, AB_TYPE *A, size_t ldA, AB_TYPE *B, size_t ldB, 
-		       C_TYPE beta, C_TYPE *C, size_t ldC, AB_TYPE *Ac, AB_TYPE *Bc, 
+		       C_TYPE beta, C_TYPE *C, size_t ldC, AB_PACK_TYPE *Ac, AB_PACK_TYPE *Bc, 
                        size_t MC, size_t NC, size_t KC, int MR, int NR, int TH, 
 		       int loop, C_TYPE *Ctmp, UK_TYPE *uk_vec, UK_EDGE_TYPE *uk_edge_vec) {
 
   int ic, jc, pc, mc, nc, kc, ir, jr, mr, nr, j, i, th, th_id; 
   C_TYPE  zero = 0.0, one = 1.0, beta_edge = 0.0, betaI, *Ctmp_th, *Cptr; 
-  AB_TYPE *Aptr, *Bptr, *Bcptr;
+  AB_TYPE *Aptr, *Bptr;
+  AB_PACK_TYPE *Bcptr;
 
   UK_TYPE uk;
   UK_EDGE_TYPE uk_edge;
@@ -495,7 +497,7 @@ void gemm_blis_A3B2C0( char orderA, char orderB, char orderC,
 
 
 void pack_RB( char orderM, char transM, int mc, int nc, 
-	      AB_TYPE *M, int ldM, AB_TYPE *Mc, int RR ){
+	      AB_TYPE *M, int ldM, AB_PACK_TYPE *Mc, int RR ){
   //BLIS pack for M-->Mc
   int    i, j, ii, k, rr;
   for ( i=0; i<mc; i+=RR ) { 
@@ -512,7 +514,7 @@ void pack_RB( char orderM, char transM, int mc, int nc,
 }
 
 void pack_CB( char orderM, char transM, int mc, int nc, 
-              AB_TYPE *M, int ldM, AB_TYPE *Mc, int RR ) {
+              AB_TYPE *M, int ldM, AB_PACK_TYPE *Mc, int RR ) {
   //BLIS pack for M-->Mc
   int    i, j, jj, k, nr;
   for ( j=0; j<nc; j+=RR ) { 
@@ -529,7 +531,7 @@ void pack_CB( char orderM, char transM, int mc, int nc,
 
 }
 
-void prepack_saxpy_A( char orderA, size_t m, size_t k, AB_TYPE *A, size_t ldA, AB_TYPE *Ac,
+void prepack_saxpy_A( char orderA, size_t m, size_t k, AB_TYPE *A, size_t ldA, AB_PACK_TYPE *Ac,
 	           size_t MC, size_t KC, int MR) {
 
   int ic, pc, mc, kc, kc_pack, mc_pack; 
@@ -560,34 +562,6 @@ void prepack_saxpy_A( char orderA, size_t m, size_t k, AB_TYPE *A, size_t ldA, A
 }
 
 
-void gemm_base_Cresident( char orderC, int m, int n, int k, C_TYPE alpha, 
-		          AB_TYPE *A, int ldA, AB_TYPE *B, int ldB, 
-			  C_TYPE beta, C_TYPE *C, int ldC ){
-  int    i, j, p;
-  C_TYPE  zero = 0.0, tmp;
-
-  for ( j=0; j<n; j++ )
-    for ( i=0; i<m; i++ ) {
-      tmp = 0.0; 
-      for ( p=0; p<k; p++ ) 
-        tmp += Acol(i,p) * Brow(p,j);
-
-      if ( beta==zero ) {
-        if ( orderC=='C' )
-          Ccol(i,j) = alpha*tmp;
-        else
-          Crow(i,j) = alpha*tmp;
-      }
-      else {
-        if ( orderC=='C' )
-          Ccol(i,j) = alpha*tmp + beta*Ccol(i,j);
-        else
-          Crow(i,j) = alpha*tmp + beta*Crow(i,j);
-      }
-    }
-}
-
-
 
 //=======================================================================================
 // DOT PRODCUTS GEMM BASED 
@@ -596,13 +570,16 @@ void gemm_base_Cresident( char orderC, int m, int n, int k, C_TYPE alpha,
 void dot_gemm( char orderA, char orderB, char orderC,
 	       size_t m, size_t n, size_t k, 
                AB_TYPE *A, size_t ldA, AB_TYPE *B, size_t ldB, 
-	       C_TYPE beta, C_TYPE *C, size_t ldC, AB_TYPE *Ac, AB_TYPE *Bc, 
+	       C_TYPE beta, C_TYPE *C, size_t ldC, AB_PACK_TYPE *Ac, AB_PACK_TYPE *Bc, 
 	       size_t MC, size_t NC, size_t KC, int MR, int NR) {
 
 
   int ic, jc, pc, mc, nc, kc, ir, jr, mr, nr, j, i, th, th_id, kc_pack, mc_pack; 
   C_TYPE  zero = 0, one = 1, beta_edge = 0, betaI, *Ctmp_th, *Cptr, alpha = 1; 
-  AB_TYPE *Aptr, *Bptr, *Acptr;
+
+  AB_TYPE *Aptr, *Bptr;
+  AB_PACK_TYPE *Acptr;
+
   C_TYPE aux[MR * NR];
 
   UK_TYPE uk;
@@ -666,7 +643,7 @@ void dot_gemm( char orderA, char orderB, char orderC,
 
 
 //WARNING: Packings for int8_t quantization with support for sdot vector intrinsic instrucction
-void pack_dot_A(char orderA, int mc, int kc, AB_TYPE *M, int ldM, AB_TYPE *Mc, int MR) {
+void pack_dot_A(char orderA, int mc, int kc, AB_TYPE *M, int ldM, AB_PACK_TYPE *Mc, int MR) {
   int p = 0;
   
   //16 values int8_t for a vectorial register
@@ -700,7 +677,7 @@ void pack_dot_A(char orderA, int mc, int kc, AB_TYPE *M, int ldM, AB_TYPE *Mc, i
 }
 
 //WARNING: Packings for int8_t quantization with support for sdot vector intrinsic instrucction
-void pack_dot_B(char orderB, int kc, int nc, AB_TYPE *M, int ldM, AB_TYPE *Mc, int NR) {
+void pack_dot_B(char orderB, int kc, int nc, AB_TYPE *M, int ldM, AB_PACK_TYPE *Mc, int NR) {
   int p = 0;
   
   //16 values int8_t for a vectorial register
@@ -756,7 +733,7 @@ void pack_dot_B(char orderB, int kc, int nc, AB_TYPE *M, int ldM, AB_TYPE *Mc, i
   //for (int i = 0; i < nc * (kc + KR); i++) { printf("%d, ", Mc[i]); if (i % 4 == 0) printf("\n");} printf("\n");
 }
 
-void vpack_dot_B(char orderB, int kc, int nc, AB_TYPE *M, int ldM, AB_TYPE *Mc, int NR) {
+void vpack_dot_B(char orderB, int kc, int nc, AB_TYPE *M, int ldM, AB_PACK_TYPE *Mc, int NR) {
   int p = 0;
   
   //16 values int8_t for a vectorial register
@@ -812,8 +789,7 @@ void vpack_dot_B(char orderB, int kc, int nc, AB_TYPE *M, int ldM, AB_TYPE *Mc, 
 
 
 //Prepack B. Weights.
-void prepack_dot_B( char orderB, size_t n, size_t k, AB_TYPE *B, size_t ldB, AB_TYPE *Bc, 
-	            size_t NC, size_t KC, int NR) {
+void prepack_dot_B( char orderB, size_t n, size_t k, AB_TYPE *B, size_t ldB, AB_PACK_TYPE *Bc, size_t NC, size_t KC, int NR) {
 
   int jc, pc, nc, kc, kc_pack, nc_pack; 
   AB_TYPE *Bptr; 
@@ -841,7 +817,7 @@ void prepack_dot_B( char orderB, size_t n, size_t k, AB_TYPE *B, size_t ldB, AB_
 }
 
 
-void prepack_dot_A( char orderA, size_t m, size_t k, AB_TYPE *A, size_t ldA, AB_TYPE *Ac,
+void prepack_dot_A( char orderA, size_t m, size_t k, AB_TYPE *A, size_t ldA, AB_PACK_TYPE *Ac,
 	           size_t MC, size_t KC, int MR) {
 
   int ic, pc, mc, kc, kc_pack, mc_pack; 
@@ -872,3 +848,252 @@ void prepack_dot_A( char orderA, size_t m, size_t k, AB_TYPE *A, size_t ldA, AB_
 
 //=======================================================================================
 //=======================================================================================
+//
+void gemm_base_Cresident( char orderC, int m, int n, int k, 
+                          C_TYPE alpha, AB_TYPE *A, int ldA, 
+                          AB_TYPE *B, int ldB, C_TYPE beta, C_TYPE *C, int ldC ){
+/*
+  Baseline micro-kernel 
+  Replace with specialized micro-kernel where C-->m x n is resident in registers
+*/
+  int    i, j, p;
+  C_TYPE  zero = 0.0, tmp;
+
+  for ( j=0; j<n; j++ )
+    for ( i=0; i<m; i++ ) {
+      tmp = 0.0; 
+      for ( p=0; p<k; p++ ) 
+        tmp += Acol(i,p) * Brow(p,j);
+
+      if ( beta==zero ) {
+        if ( orderC=='C' )
+          Ccol(i,j) = alpha*tmp;
+        else
+          Crow(i,j) = alpha*tmp;
+      }
+      else {
+        if ( orderC=='C' )
+          Ccol(i,j) = alpha*tmp + beta*Ccol(i,j);
+        else
+          Crow(i,j) = alpha*tmp + beta*Crow(i,j);
+      }
+    }
+}
+
+
+void gemm( char orderA, char orderB, char orderC, char transA, char transB, 
+           size_t m, size_t n, size_t k, C_TYPE alpha, AB_TYPE *A, int ldA, 
+	   AB_TYPE *B, int ldB, C_TYPE beta,  C_TYPE *C, int ldC ){
+
+   size_t ic, jc, i, j, p;
+
+   C_TYPE  zero = 0.0, one = 1.0, tmp;
+
+   // Quick return if possible
+  if ( (m==0)||(n==0) || (((alpha==zero) || (k==0)) && (beta==one)) )
+    return;
+
+  #include "quick_gemm.h"
+
+  if ( (transA=='N')&&(transB=='N') ) {
+    for ( j=0; j<n; j++ ) 
+      for ( i=0; i<m; i++ ) {
+        tmp = 0.0; 
+        if ( (orderA=='C')&&(orderB=='C') ) {
+          for ( p=0; p<k; p++ )
+            tmp += Acol(i,p) * Bcol(p,j);
+        }
+        else if ( (orderA=='C')&&(orderB=='R') ) {
+          for ( p=0; p<k; p++ )
+            tmp += Acol(i,p) * Brow(p,j);
+        }
+        else if ( (orderA=='R')&&(orderB=='C') ) {
+          for ( p=0; p<k; p++ )
+            tmp += Arow(i,p) * Bcol(p,j);
+        }
+        else {
+          for ( p=0; p<k; p++ )
+            tmp += Arow(i,p) * Brow(p,j);
+        }
+
+	if ( beta==zero ) {
+          if ( orderC=='C' )
+            Ccol(i,j) = alpha*tmp;
+          else
+            Crow(i,j) = alpha*tmp;
+        }
+	else {
+          if ( orderC=='C' )
+            Ccol(i,j) = alpha*tmp + beta*Ccol(i,j);
+          else
+            Crow(i,j) = alpha*tmp + beta*Crow(i,j);
+        }
+      }
+  }
+  else if ( (transA=='N')&&(transB=='T') ) {
+    for ( j=0; j<n; j++ ) 
+      for ( i=0; i<m; i++ ) {
+        tmp = 0.0; 
+        if ( (orderA=='C')&&(orderB=='C') ) {
+          for ( p=0; p<k; p++ )
+            tmp += Acol(i,p) * Bcol(j,p);
+        }
+        else if ( (orderA=='C')&&(orderB=='R') ) {
+          for ( p=0; p<k; p++ )
+            tmp += Acol(i,p) * Brow(j,p);
+        }
+        else if ( (orderA=='R')&&(orderB=='C') ) {
+          for ( p=0; p<k; p++ )
+            tmp += Arow(i,p) * Bcol(j,p);
+        }
+        else {
+          for ( p=0; p<k; p++ )
+            tmp += Arow(i,p) * Brow(j,p);
+        }
+
+	if ( beta==zero ) {
+          if ( orderC=='C' )
+            Ccol(i,j) = alpha*tmp;
+          else
+            Crow(i,j) = alpha*tmp;
+        }
+	else {
+          if ( orderC=='C' )
+            Ccol(i,j) = alpha*tmp + beta*Ccol(i,j);
+          else
+            Crow(i,j) = alpha*tmp + beta*Crow(i,j);
+        }
+      }
+  }
+  else if ( (transA=='T')&&(transB=='N') ) {
+    for ( j=0; j<n; j++ ) 
+      for ( i=0; i<m; i++ ) {
+        tmp = 0.0; 
+        if ( (orderA=='C')&&(orderB=='C') ) {
+          for ( p=0; p<k; p++ )
+            tmp += Acol(p,i) * Bcol(p,j);
+        }
+        else if ( (orderA=='C')&&(orderB=='R') ) {
+          for ( p=0; p<k; p++ )
+            tmp += Acol(p,i) * Brow(p,j);
+        }
+        else if ( (orderA=='R')&&(orderB=='C') ) {
+          for ( p=0; p<k; p++ )
+            tmp += Arow(p,i) * Bcol(p,j);
+        }
+        else {
+          for ( p=0; p<k; p++ )
+            tmp += Arow(p,i) * Brow(p,j);
+        }
+
+	if ( beta==zero ) {
+          if ( orderC=='C' )
+            Ccol(i,j) = alpha*tmp;
+          else
+            Crow(i,j) = alpha*tmp;
+        }
+	else {
+          if ( orderC=='C' )
+            Ccol(i,j) = alpha*tmp + beta*Ccol(i,j);
+          else
+            Crow(i,j) = alpha*tmp + beta*Crow(i,j);
+        }
+      }
+  }
+  else if ( (transA=='T')&&(transB=='T') ) {
+    for ( j=0; j<n; j++ ) 
+      for ( i=0; i<m; i++ ) {
+        tmp = 0.0; 
+        if ( (orderA=='C')&&(orderB=='C') ) {
+          for ( p=0; p<k; p++ )
+            tmp += Acol(p,i) * Bcol(j,p);
+        }
+        else if ( (orderA=='C')&&(orderB=='R') ) {
+          for ( p=0; p<k; p++ )
+            tmp += Acol(p,i) * Brow(j,p);
+        }
+        else if ( (orderA=='R')&&(orderB=='C') ) {
+          for ( p=0; p<k; p++ )
+            tmp += Arow(p,i) * Bcol(j,p);
+        }
+        else {
+          for ( p=0; p<k; p++ )
+            tmp += Arow(p,i) * Brow(j,p);
+        }
+
+	if ( beta==zero ) {
+          if ( orderC=='C' )
+            Ccol(i,j) = alpha*tmp;
+          else
+            Crow(i,j) = alpha*tmp;
+        }
+	else {
+          if ( orderC=='C' )
+            Ccol(i,j) = alpha*tmp + beta*Ccol(i,j);
+          else
+            Crow(i,j) = alpha*tmp + beta*Crow(i,j);
+        }
+      }
+  }
+  else {
+    printf("Error: Invalid options for transA, transB: %c %c\n", transA, transB);
+    exit(-1);
+  }
+}
+
+
+double gemm_validation(int order, int transA, int transB, AB_TYPE *A, AB_TYPE *B, 
+		       int m, int n, int k, C_TYPE alpha, C_TYPE beta, int ldA, int ldB, 
+		       int ldC, C_TYPE *C, C_TYPE *Cg) {
+
+  int j, i;
+  double tmp, nrm, error;
+  char _orderA, _orderB, _orderC, _transA, _transB;
+
+  if (order == COLUMN_MAJOR) _orderA = 'C';
+  else _orderA = 'R';
+
+  if (order == COLUMN_MAJOR) _orderB = 'C';
+  else _orderB = 'R';
+
+  if (order == COLUMN_MAJOR) _orderC = 'C';
+  else _orderC = 'R';
+
+  if (transA == TRANSPOSE) _transA = 'T';
+  else _transA = 'N';
+
+  if (transB == TRANSPOSE) _transB = 'T';
+  else _transB = 'N';
+
+  // Test result
+  gemm( _orderA, _orderB, _orderC, _transA, _transB, m, n, k, alpha, A, ldA, B, ldB, beta, Cg, ldC );
+
+  error = 0.0;
+  nrm   = 0.0;
+  if ( _orderC=='C' )
+    for ( j=0; j<n; j++ )
+      for ( i=0; i<m; i++ ) {
+        tmp = (double) Cgcol(i,j)*Cgcol(i,j);
+	nrm += tmp*tmp;
+	tmp = (double) dabs(Cgcol(i,j)-Ccol(i,j)); 
+	error += tmp*tmp;
+      }
+  else
+    for ( j=0; j<n; j++ )
+      for ( i=0; i<m; i++ ) {
+        tmp = (double) Cgrow(i,j)*Cgrow(i,j);
+	nrm += tmp*tmp;
+	tmp = (double) dabs(Cgrow(i,j)-Crow(i,j)); 
+	error += tmp*tmp;
+      }
+
+  if ( nrm!=0.0 )
+    error = sqrt(error) / sqrt(nrm);
+  else
+    error = sqrt(error);
+
+
+  return error;
+
+}
+

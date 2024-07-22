@@ -23,7 +23,7 @@
 /*
  * BLIS pack for M-->Mc
 */
-void pack_RB_convgemm(char orderM, char transM, int mc, int nc, const AB_TYPE *restrict M, int ldM, AB_TYPE *restrict Mc, int RR,
+void pack_RB_convgemm(char orderM, char transM, int mc, int nc, const AB_TYPE *restrict M, int ldM, AB_PACK_TYPE *restrict Mc, int RR,
                       const conv_p *conv_params, int start_row, int start_col) {
     int i, j, ii, k, rr;
 

@@ -146,8 +146,8 @@ testConfig_t* new_CNN_Test_Config(char * argv[]) {
   new_testConfig->NR     = atoi(argv[8]);
   new_testConfig->TH     = atoi(argv[9]);
 
-  strcpy(new_testConfig->ALG, argv[10]);
-  strcpy(new_testConfig->GEMM, argv[11]);
+  strcpy(new_testConfig->algorithm, argv[10]);
+  strcpy(new_testConfig->gemm, argv[11]);
 
   new_testConfig->bestof = argv[12][0];
 
@@ -159,8 +159,8 @@ testConfig_t* new_CNN_Test_Config(char * argv[]) {
 
   sprintf(format_str, "%s", "NHWC");
 
-  sprintf(algorithm, "%s", new_testConfig->ALG);
-  sprintf(kernel,    "%s", new_testConfig->GEMM);
+  sprintf(algorithm, "%s", new_testConfig->algorithm);
+  sprintf(kernel,    "%s", new_testConfig->gemm);
   
 
   if ((strcmp("LOWERING", algorithm)==0 && strcmp("B3A2C0", kernel)==0) || 
@@ -175,7 +175,8 @@ testConfig_t* new_CNN_Test_Config(char * argv[]) {
   printf(" +==================================================================================================================+\n");
   printf(" |%s                                                 TEST CONFIGURATION                                               %s|\n", COLOR_BOLDYELLOW, COLOR_RESET);
   printf(" +=====================================+============================================================================+\n");
-  printf(" |  [%s*%s] Matrix Format Selected         |  %-74s|\n",  COLOR_BOLDYELLOW, COLOR_RESET, format_str);
+  if (strcmp("GEMM", new_testConfig->algorithm)!=0 )
+    printf(" |  [%s*%s] Matrix Format Selected         |  %-74s|\n",  COLOR_BOLDYELLOW, COLOR_RESET, format_str);
   printf(" |  [%s*%s] Test Minimum Time              |  %-74.2f|\n",  COLOR_BOLDYELLOW, COLOR_RESET, new_testConfig->tmin);
   printf(" |  [%s*%s] Test Verification              |  %-74s|\n",  COLOR_BOLDYELLOW, COLOR_RESET, argv[4][0] == 'T' ? "ON" : "OFF");
   printf(" |  [%s*%s] Mode Debug                     |  %-74s|\n",  COLOR_BOLDYELLOW, COLOR_RESET, argv[5][0] == 'T' ? "ON" : "OFF");
@@ -192,7 +193,8 @@ testConfig_t* new_CNN_Test_Config(char * argv[]) {
   printf(" |  [%s*%s] File Results Selected          |  %-74s|\n",  COLOR_BOLDYELLOW, COLOR_RESET, argv[6]);
   printf(" +=====================================+============================================================================+\n");
   printf(" |  [%s*%s] Algorithm Selected             |  %s%-74s%s|\n",  COLOR_BOLDYELLOW, COLOR_RESET, COLOR_BOLDCYAN, algorithm, COLOR_RESET);
-  if (strcmp("LOWERING", new_testConfig->ALG)==0) {
+  if (strcmp("LOWERING", new_testConfig->algorithm)==0 || 
+      strcmp("GEMM", new_testConfig->algorithm)==0) {
     printf(" |  [%s*%s] GEMM Selected                  |  %s%-74s%s|\n",  COLOR_BOLDYELLOW, COLOR_RESET, COLOR_BOLDCYAN, kernel, COLOR_RESET);
     if (new_testConfig->TH > 1)
       printf(" |  [%s*%s] LOOP Selected                  |  %s%-74s%s|\n",  COLOR_BOLDYELLOW, COLOR_RESET, COLOR_BOLDCYAN, loop, COLOR_RESET);
@@ -200,8 +202,14 @@ testConfig_t* new_CNN_Test_Config(char * argv[]) {
   printf(" |  [%s*%s] Threads Number                 |  %s%-74d%s|\n",  COLOR_BOLDYELLOW, COLOR_RESET, COLOR_BOLDCYAN, new_testConfig->TH, COLOR_RESET);
   printf(" |  [%s*%s] Best Of Micro-kernels          |  %s%-74s%s|\n",  COLOR_BOLDYELLOW, COLOR_RESET, COLOR_BOLDCYAN, argv[12][0] == 'T' ? "ON" : "OFF", COLOR_RESET);
   
-  #ifdef FP32
-    printf(" |  [%s*%s] Data Type                      |  %s%-74s%s|\n", COLOR_BOLDYELLOW, COLOR_RESET, COLOR_BOLDCYAN, "FP32", COLOR_RESET);
+  #ifdef NQ_FP32
+    printf(" |  [%s*%s] Data Type                      |  %s%-74s%s|\n", COLOR_BOLDYELLOW, COLOR_RESET, COLOR_BOLDCYAN, "NQ_FP32", COLOR_RESET);
+  #elif FQ_FP32
+    printf(" |  [%s*%s] Data Type                      |  %s%-74s%s|\n", COLOR_BOLDYELLOW, COLOR_RESET, COLOR_BOLDCYAN, "FQ_FP32 (INT8 | FP32)", COLOR_RESET);
+  #elif NQ_INT32
+    printf(" |  [%s*%s] Data Type                      |  %s%-74s%s|\n", COLOR_BOLDYELLOW, COLOR_RESET, COLOR_BOLDCYAN, "NQ_INT32", COLOR_RESET);
+  #elif FQ_INT32
+    printf(" |  [%s*%s] Data Type                      |  %s%-74s%s|\n", COLOR_BOLDYELLOW, COLOR_RESET, COLOR_BOLDCYAN, "FQ_INT32 (INT8 | INT32)", COLOR_RESET);
   #elif FP16
     printf(" |  [%s*%s] Data Type                      |  %s%-74s%s|\n", COLOR_BOLDYELLOW, COLOR_RESET, COLOR_BOLDCYAN, "FP16", COLOR_RESET);
   #elif INT8_INT32_S8

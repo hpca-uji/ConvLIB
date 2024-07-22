@@ -5,25 +5,22 @@
 #define Crref(i,j)   Cr[j*Clda+i]
 
 //Micro-kernels selector
-void fselector(int MR, int NR, int ALGORITHM, int GEMM, UK_TYPE *uk_vec, UK_EDGE_TYPE *uk_edge_vec, UK_TYPE *uk, UK_EDGE_TYPE *uk_edge) {
+void fselector(int MR, int NR, int algorithm, int gemm, UK_TYPE *uk_vec, UK_EDGE_TYPE *uk_edge_vec, UK_TYPE *uk, UK_EDGE_TYPE *uk_edge) {
 
-  #ifdef FP32
+  #if defined(NQ_FP32) || defined(FQ_FP32)
     uk_asm_selector_fp32(MR, NR, uk_vec, uk);
     uk_asm_edge_selector_fp32(MR, NR, uk_edge_vec, uk_edge);
+  #elif defined(NQ_INT32) || defined(FQ_INT32)
+    uk_intrinsic_selector_int32(MR, NR, uk_vec, uk);
+    *uk_edge = *uk;
   #elif FP16
     uk_intrinsic_selector_fp16(MR, NR, uk_vec, uk);
     *uk_edge = *uk;
-  #elif INT8_INT32_U8
-    if ((ALGORITHM == LOWERING) && (GEMM == SDOT_GEMM))
+  #elif Q_INT8_INT32
+    if ((algorithm == LOWERING) && (gemm == SDOT_GEMM))
       *uk = uk_intrinsic_quantize_int8_4x16_sdot;
     else
-      uk_intrinsic_selector_int8_int32_u8(MR, NR, uk_vec, uk);
-    *uk_edge = *uk;
-  #elif INT8_INT32_S8
-    if ((ALGORITHM == LOWERING) && (GEMM == SDOT_GEMM))
-      *uk = uk_intrinsic_quantize_int8_4x16_sdot;
-    else
-      uk_intrinsic_selector_int8_int32_s8(MR, NR, uk_vec, uk);
+      uk_intrinsic_selector_int8_int32(MR, NR, uk_vec, uk);
     *uk_edge = *uk;
   #endif
 
@@ -31,11 +28,11 @@ void fselector(int MR, int NR, int ALGORITHM, int GEMM, UK_TYPE *uk_vec, UK_EDGE
 
 
 //Generic micro-kernel for Lowering+GEMM based on DOT Products.
-void sdot_microkernel(int mr, int nr, int MR, int NR, AB_TYPE *A, AB_TYPE *B, 
+void sdot_microkernel(int mr, int nr, int MR, int NR, AB_PACK_TYPE *A, AB_PACK_TYPE *B, 
 		         C_TYPE *C, uint32_t kc, uint32_t ldC, C_TYPE alpha, C_TYPE beta, 
 			 C_TYPE *aux, UK_TYPE uk, UK_EDGE_TYPE uk_edge) {
   //WARNING: C stored by rows!
-  #if defined(INT8_INT32_U8) || defined(INT8_INT32_S8)
+  #if defined(Q_INT8_INT32)
     if (mr == MR && nr == NR)
       uk(kc, A, B, C, beta, ldC);
     else {
@@ -56,22 +53,22 @@ void sdot_microkernel(int mr, int nr, int MR, int NR, AB_TYPE *A, AB_TYPE *B,
 }
 
 //Generic micro-kernel for other convolutional algorithms
-void generic_microkernel(int mr, int nr, int MR, int NR, AB_TYPE *A, AB_TYPE *B, 
+void generic_microkernel(int mr, int nr, int MR, int NR, AB_PACK_TYPE *A, AB_PACK_TYPE *B, 
 		         C_TYPE *C, uint32_t kc, uint32_t ldC, C_TYPE alpha, C_TYPE beta, 
 			 C_TYPE *aux, UK_TYPE uk, UK_EDGE_TYPE uk_edge) {
 
-  #ifdef FP32
+  #if defined(NQ_FP32) || defined(FQ_FP32)
     if (mr == MR && nr == NR)
       uk(kc, &alpha, A, B, &beta, C, ldC * sizeof(float));
     else
       uk_edge(mr, nr, MR, NR, kc, &alpha, A, B, &beta, aux, C, ldC);
   #else
     if ((mr == MR) && (nr == NR))
-      //uk(kc, A, B, C, beta, ldC); 
-      ukernel_intrinsic_16x8_A78_fp16(kc, A, B, C, beta, ldC); 
+      uk(kc, A, B, C, beta, ldC); 
+      //ukernel_intrinsic_16x8_A78_fp16(kc, A, B, C, beta, ldC); 
     else {
-      //uk_edge(kc, A, B, aux, 0, MR);
-      ukernel_intrinsic_16x8_A78_fp16(kc, A, B, aux, 0, MR);
+      uk_edge(kc, A, B, aux, 0, MR);
+      //ukernel_intrinsic_16x8_A78_fp16(kc, A, B, aux, 0, MR);
       for (int j = 0; j < nr; j++)
       for (int i = 0; i < mr; i++)
         C[j*ldC + i] = (beta) * C[j*ldC + i] + aux[j * MR + i];

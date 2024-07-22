@@ -2,7 +2,7 @@
 
 
 
-void packRB( char orderA, char transA, int mc, int nc, AB_TYPE *A, int ldA, AB_TYPE *Ac, int RR ){
+void packRB( char orderA, char transA, int mc, int nc, AB_TYPE *A, int ldA, AB_PACK_TYPE *Ac, int RR ){
   int    i, j, ii, k, rr;
 
   if ( ((transA=='N')&&( orderA=='C'))||
@@ -93,7 +93,7 @@ void convDirect_original( int n, int k, int c,
 void transform_filter_block_blis( int Ci, int Co,
 				  int Hf, int Wf,
 				  AB_TYPE *F,  int ldF1,  int ldF2,  int ldF3,
-				  AB_TYPE *FB, int ldFB1, int ldFB2, int ldFB3, int ldFB4,
+				  AB_PACK_TYPE *FB, int ldFB1, int ldFB2, int ldFB3, int ldFB4,
 				  int tformat, int MR, int NR) {
   int  i, j, jj, jb, j2, m, n;  
   // Quick return if possible
@@ -121,9 +121,9 @@ void transform_filter_block_blis( int Ci, int Co,
 void convDirect_block_blis( int t, int Co, int Ci, int Ho,    int Wo, 
                             int ho,    int wo, int Hf,    int Wf,
 		            AB_TYPE *D,  int ldD1,  int ldD2,  int ldD3,
-	                    AB_TYPE *FB, int ldFB1, int ldFB2, int ldFB3, int ldFB4,
+	                    AB_PACK_TYPE *FB, int ldFB1, int ldFB2, int ldFB3, int ldFB4,
                             C_TYPE *Y,  int ldY1,  int ldY2,  int ldY3,
-                            AB_TYPE *Ac, C_TYPE *Ctmp, int tformat, int CIB, int COB, int WOB, 
+                            AB_PACK_TYPE *Ac, C_TYPE *Ctmp, int tformat, int CIB, int COB, int WOB, 
 			    int MR, int NR, int TH, UK_TYPE *uk_vec, UK_EDGE_TYPE *uk_edge_vec) {
 
   if (tformat == NCHW) {
