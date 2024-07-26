@@ -45,7 +45,7 @@ BLIS_ENABLE     = F
 #  [] NQ_FP16        #Input:FP16  + Pack:FP16  + Micro:FP16
 #  [] FQ_FP16        #Input:INT8  + Pack:FP32  + Micro:FP32
 #----------------------------------------------------------
-DTYPE = Q_INT8_INT32
+DTYPE = NQ_FP32
 #----------------------------------------------------------
 
 
