@@ -14,7 +14,7 @@ ifeq ($(PROCESSOR), A57)
   arch=armv8
 else ifeq ($(PROCESSOR), A78AE)
   arch=armv8
-else ifeq ($(PROCESSOR), Carmel)
+else ifeq ($(PROCESSOR), CARMEL)
   arch=armv8
 else ifeq ($(PROCESSOR), C906)
   arch=riscv
@@ -28,8 +28,10 @@ ifeq ($(DTYPE), NQ_FP32)
     FLAGS += -DNQ_FP32
 else ifeq ($(DTYPE), FQ_FP32)
     FLAGS += -DFQ_FP32
-else ifeq ($(DTYPE), FP16)
-    FLAGS += -DFP16
+else ifeq ($(DTYPE), NQ_FP16)
+    FLAGS += -DNQ_FP16
+else ifeq ($(DTYPE), FQ_FP16)
+    FLAGS += -DFQ_FP16
 else ifeq ($(DTYPE), NQ_INT32)
     FLAGS += -DNQ_INT32
 else ifeq ($(DTYPE), FQ_INT32)
@@ -51,7 +53,7 @@ else ifeq ($(arch), armv8)
     CLINKER  = gcc
     ifeq ($(PROCESSOR), A78AE)
         OPTFLAGS = -march=armv8.2-a+fp16+dotprod -DARMV8 
-    else ifeq ($(PROCESSOR), Carmel)
+    else ifeq ($(PROCESSOR), CARMEL)
         OPTFLAGS = -march=armv8.2-a+fp16 -DARMV8  
     else
         OPTFLAGS = -march=armv8-a -DARMV8 
@@ -81,6 +83,14 @@ ifeq ($(OPENBLAS_ENABLE), T)
 	LIBS_LINKER += $(OPENBLAS_HOME)/lib/libopenblas.a 
 	OPTFLAGS    += -DENABLE_OPENBLAS
 endif
+
+ifeq ($(POWER_CONSUMPTION), T)
+	INCLUDE     += -I$(PMLIB_HOME)/include/
+	LIBS_LINKER += -L$(PMLIB_HOME)/lib/ -lpmlib
+	LIBS        += -L$(PMLIB_HOME)/lib/ -lpmlib
+	OPTFLAGS    += -DENERGY_CONSUMPTION
+endif
+
 #------------------------------------------
 
 OBJ_FILES = $(OBJDIR)/model_level.o $(OBJDIR)/selector_ukernel.o $(OBJDIR)/gemm_ukernel.o $(OBJDIR)/ukernels.o \

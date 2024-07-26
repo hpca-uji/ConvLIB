@@ -65,6 +65,142 @@
 #define dabs(a)      ( (a) > 0.0 ? (a) : -(a) )
 
 
+#ifdef ENERGY_CONSUMPTION
+
+#include "pmlib.h"
+
+//Energy Consumption
+int pmblib_get_data(counter_t pm_counter,line_t lines, int set, double *measures, const int nmeasures) {
+
+/*! Print the structure data in a file in text format.
+  The lines and sets parameters define which data will be printed.
+  If parameter set is 0 all sets will be printed.
+  The format of the file is:
+  	Set_id <tab> Time <tab> Value_Line1 <tab> Value_Line2 <tab>... <tab> Value_aggregate
+
+*/
+
+  FILE    *file_data;
+  int	i, j, ii, s, init, last, m;
+  int	ini, fin, watts_size, interval;
+  double	time, inc_time, t, sum;
+  int	*ind_print, *ind_lines, n_lines_print, n_lines_counter;
+
+  int n_reads = 0;
+	
+  for (m=0; m <= nmeasures; m++)
+    measures[m] += 0.0; 
+
+  if ( pm_counter.aggregate ) {	//Only aggregate value will be printed
+    if (set > pm_counter.measures->energy.watts_sets_size-1 || set <-1)
+      return -1;
+
+    if (set == -1) {
+      init= 0;
+      last= pm_counter.measures->energy.watts_sets_size-1;
+    } else {
+      init= set;
+      last= set+1;
+    }
+
+    for( s= init; s < last; s++ ) {
+      ini=pm_counter.measures->energy.watts_sets[s];
+      fin=pm_counter.measures->energy.watts_sets[s+1];
+
+      watts_size=pm_counter.measures->energy.watts_size;
+      time=pm_counter.measures->timing[(s*2)+1]-pm_counter.measures->timing[s*2];
+      inc_time=time/(fin-ini-1);
+
+      t=0.0;
+      for(i=ini; i<fin; i++){
+        printf("%d\t%f\t%f\n", s, t, pm_counter.measures->energy.watts[i]);
+	t+=inc_time;
+      }
+    }
+  } else {	//If all lines will be printed
+    if (set > pm_counter.measures->energy.watts_sets_size-1 || set <-1)
+      return -1;
+	
+    line_t p_lines;
+    LINE_AND(&p_lines, lines, pm_counter.lines);
+    n_lines_counter= 0;
+    n_lines_print= 0;
+
+    for (i=0; i<__NLINEBITS && n_lines_print < pm_counter.measures->energy.lines_len; i++) {
+      if(LINE_ISSET( i, &p_lines ))          n_lines_print++;
+      if(LINE_ISSET( i, &pm_counter.lines )) n_lines_counter++;
+    }
+
+    ind_print=(int *)malloc( n_lines_print*sizeof(int));
+    ind_lines=(int *)malloc( n_lines_print*sizeof(int));
+
+    j= 0; ii= 0;
+    for (i=0; i<__NLINEBITS && j < pm_counter.measures->energy.lines_len; i++) {
+      if(LINE_ISSET( i, &p_lines ) && LINE_ISSET( i, &pm_counter.lines )) {
+        ind_print[ii]= j;
+	ind_lines[ii]= i;
+	ii++;
+	j++;
+      } else if(!LINE_ISSET( i, &p_lines ) && LINE_ISSET( i, &pm_counter.lines ))
+	j++;
+    }
+
+    interval=pm_counter.measures->energy.watts_sets[pm_counter.measures->energy.watts_sets_size-1]-pm_counter.measures->energy.watts_sets[0];
+
+    if (set == -1) {
+      init= 0;
+      last= pm_counter.measures->energy.watts_sets_size-1;
+    } else {
+      init= set;
+      last= set+1;
+    }
+
+    int offset = 0;
+    watts_size = pm_counter.measures->energy.watts_size;
+
+    for( s= init; s < last; s++ ) {
+      ini=pm_counter.measures->energy.watts_sets[s];
+      fin=pm_counter.measures->energy.watts_sets[s+1];
+
+      time=pm_counter.measures->timing[(s*2)+1]-pm_counter.measures->timing[s*2];
+      inc_time=time/(fin-ini-1);
+
+      interval = fin-ini;
+
+      t=0.0;
+      for(i=0; i<interval; i++) {
+        sum = 0.0;
+
+	for(j=0;j<n_lines_print;j++)
+	  sum+=pm_counter.measures->energy.watts[offset + ( i+interval*ind_print[j])];
+
+	for (m=0; m < nmeasures; m++)
+	  measures[m] += pm_counter.measures->energy.watts[offset + ( i+interval*ind_print[m])]; 
+
+	measures[nmeasures] += sum;
+
+	n_reads++;
+	t+=inc_time;
+      }
+
+      offset+= (n_lines_counter*interval);
+
+    }
+
+    free(ind_print);
+    free(ind_lines);
+  
+  }
+
+  for (m=0; m <= nmeasures; m++) 
+    measures[m] = measures[m] / (double)n_reads;
+
+  return(0);
+}
+
+#endif
+
+
 
 int main(int argc, char *argv[]) {
   char* variant;
@@ -137,6 +273,8 @@ int main(int argc, char *argv[]) {
   int gemm;
   int format;
 
+  fprintf(testConf->fd_csv, "Format;l;MC;NC;KC;M;N;K;n;k;c;ho;wo;kh;kw;Time;GFLOPS;Error;MR;NR;");    
+
   tmin    = testConf->tmin;
   tformat = testConf->format;
   TH      = testConf->TH;
@@ -204,7 +342,49 @@ int main(int argc, char *argv[]) {
     errorthd = 1.0e-14;
   #endif
 
-  fprintf(testConf->fd_csv, "Format;l;MC;NC;KC;M;N;K;n;k;c;ho;wo;kh;kw;Time;GFLOPS;Error;MR;NR\n");    
+  #ifdef ENERGY_CONSUMPTION
+    //POWER CONSUMPTION
+    server_t server;
+    line_t lines;
+    counter_t counter;
+
+    int frequency=0, aggregate=1;
+    char platform[256];
+
+    //Server configuration
+    pm_set_server("127.0.0.1", 6526, &server);
+    
+    #ifdef CARMEL
+      pm_set_lines("0-5", &lines);
+      const int nmeasures = 6;
+      char measures_info[6][128] = {"GPU", "CPU", "SOC", "CV", "VDDRQ", "SYS5V"};
+      sprintf(platform, "%s", "Jetson-Xavier");
+    #elif A78AE
+      pm_set_lines("0-3", &lines);
+      const int nmeasures = 4;
+      char measures_info[4][128] = {"VDD_GPU_SOC", "VDD_CPU_CV", "VIN_SYS_5V0", "VDDQ_VDD2_1V8AO"};
+      sprintf(platform, "%s", "Jetson-Orin");
+    #elif A57
+      pm_set_lines("0-2", &lines);
+      const int nmeasures = 3;
+      char measures_info[3][128] = {"POM_5V_IN", "POM_5V_GPU", "POM_5V_CPU"};
+      sprintf(platform, "%s", "Jetson-Nano");
+   #else
+      const int nmeasures = 0;
+      printf("Architecture unsuported with PMLIB.\n");
+      exit(-1);
+    #endif
+
+    pm_create_counter(platform, lines, !aggregate, frequency, server, &counter);
+    double measures[nmeasures+1];
+    double best_measures[nmeasures+1];
+  
+    for (m = 0; m < nmeasures; m++) fprintf(testConf->fd_csv, "%s;", measures_info[m]);
+
+    sleep(1);
+
+  #endif
+  fprintf(testConf->fd_csv, "\n");
 
   printf(" +====================================================================================================================================+\n");
   printf(" |%s                                                    DRIVER FOR GEMM EVALUATION                                                      %s|\n",
@@ -355,7 +535,11 @@ int main(int argc, char *argv[]) {
 	  //prepack_dot_A( 'C', mm, kk, F, lda, Ac_blis, mc_blis, kc_blis, MR);
 	  //else if(gemm == B3A2C0)
 	  //prepack_saxpy_A( 'C', mm, kk, F, lda, Ac_blis, mc_blis, kc_blis, MR);
-  
+	  
+	  #ifdef ENERGY_CONSUMPTION
+            pm_start_counter(&counter);
+          #endif
+
           time  = 0.0; 
           t1    = dclock();
           nreps = 0;
@@ -385,12 +569,17 @@ int main(int argc, char *argv[]) {
                                 Ac, Bc, mc_blis, nc_blis, kc_blis, 
 			        MR, NR, TH, testConf->LOOP, Ctmp, uk_vec, uk_edge_vec);
 	    } else if (gemm == SDOT_GEMM) {
-	      ldC = ho * wo * n;
-              dot_gemm( 'C', 'C', 'R', mm, nn, kk, A, ldA, B, ldB, beta, C, ldC,
-	                 Ac, Bc, mc_blis, nc_blis, kc_blis, MR, NR);
-	      } else {
-	        printf("ERROR: Algorithm unsupported.\n"); exit(-1);
-	      }
+	      #ifdef A78AE
+	        ldC = ho * wo * n;
+                dot_gemm( 'C', 'C', 'R', mm, nn, kk, A, ldA, B, ldB, beta, C, ldC,
+	                   Ac, Bc, mc_blis, nc_blis, kc_blis, MR, NR);
+              #else
+		printf("SDOT GEMM Only supported for A78AE arch.\n");
+		exit(-1);
+              #endif
+	    } else {
+	      printf("ERROR: Algorithm unsupported.\n"); exit(-1);
+	    }
   
 	    nreps++;
             t2 = dclock();
@@ -417,8 +606,13 @@ int main(int argc, char *argv[]) {
   
               
           flops = 2.0 * mm * nn * kk;
-  
           GFLOPS  = flops / (1.0e+9 * time );
+      
+          #ifdef ENERGY_CONSUMPTION
+            pm_stop_counter(&counter);
+            pm_get_counter_data(&counter);
+            pmblib_get_data(counter, lines, -1, measures, nmeasures);
+          #endif
   
           if ((gemm == BLIS) || (gemm == OPENBLAS))
             printf(" | -    -  |   -         -        -    | %3d %5d %5d %5d %5d   (%1d,%1d)  | %s%-10.2e%s %-8.1e %8.1e |", n, k, c, ho, wo, r, s, COLOR_BOLDCYAN, GFLOPS, COLOR_RESET, time, error);
@@ -435,6 +629,9 @@ int main(int argc, char *argv[]) {
 	    best_mc    = mc_blis;
 	    best_nc    = nc_blis;
 	    best_kc    = kc_blis;
+            #ifdef ENERGY_CONSUMPTION
+	      for (int m=0; m < nmeasures; m++) best_measures[m] = measures[m];
+            #endif
 	  }
 	  
           if ( testConf->test=='T')
@@ -459,21 +656,28 @@ int main(int argc, char *argv[]) {
       
         }
       }
-  
+
+
+
       if (testConf->bestof=='T') {
         printf(" +---------+---------------------+-----------------------+--------------------------------------+------------------------------+------+\n");
         printf(" | %s%-3d  %-2d | %-6d %-6d %-6d|   -       -     -     |   -    -     -     -      -     -    | %s%-9.2e%s      -       -     |      |", COLOR_RESET, best_mr, best_nr, best_mc, best_nc, best_kc,  COLOR_BOLDMAGENTA, best_flops, COLOR_RESET);
         printf("\n");
         printf(" +---------+---------------------+-----------------------+--------------------------------------+------------------------------+------+\n");
   
-        fprintf(testConf->fd_csv,"%s;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%.2e;%.2f;%.2e;%d;%d\n", format == 0 ? "NHWC" : "NCHW", testConf->cnn[cnn_i].layer, best_mc, best_nc, best_kc, mm, nn, kk, n, k, c, ho, wo, r, s, best_time, best_flops, best_error, best_mr, best_nr);
+        fprintf(testConf->fd_csv,"%s;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%.2e;%.2f;%.2e;%d;%d;", format == 0 ? "NHWC" : "NCHW", testConf->cnn[cnn_i].layer, best_mc, best_nc, best_kc, mm, nn, kk, n, k, c, ho, wo, r, s, best_time, best_flops, best_error, best_mr, best_nr);
       } else
-        fprintf(testConf->fd_csv,"%s;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%.2e;%.2f;%.2e;%d;%d\n", format == 0 ? "NHWC" : "NCHW", testConf->cnn[cnn_i].layer, mc, nc, kc, mm, nn, kk, n, k, c, ho, wo, r, s, time, GFLOPS, error, MR, NR);
+        fprintf(testConf->fd_csv,"%s;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%.2e;%.2f;%.2e;%d;%d;", format == 0 ? "NHWC" : "NCHW", testConf->cnn[cnn_i].layer, mc, nc, kc, mm, nn, kk, n, k, c, ho, wo, r, s, time, GFLOPS, error, MR, NR);
+      #ifdef ENERGY_CONSUMPTION
+        for (m = 0; m < nmeasures; m++) fprintf(testConf->fd_csv, "%.4f;", measures[m]);
+      #endif
+      fprintf(testConf->fd_csv, "\n");
   
     }
     if (testConf->bestof != 'T') 
       printf(" +=========+=====================+=======================+======================================+==============================+======+\n");
   }
+
   fclose(testConf->fd_csv);
   free_CNN_Test_Config(testConf);
       

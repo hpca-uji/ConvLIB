@@ -282,17 +282,6 @@ void gemm_blis_A3B2C0( char orderA, char orderB, char orderC,
 
   fselector(MR, NR, LOWERING, A3B2C0, uk_vec, uk_edge_vec, &uk, &uk_edge);
 
-  //#ifdef FP32
-    //uk_asm_selector_fp32(MR, NR, uk_vec, &uk);
-    //uk_asm_edge_selector_fp32(MR, NR, uk_edge_vec, &uk_edge);
-  //#elif FP16
-    //uk_intrinsic_selector_fp16(MR, NR, uk_vec, &uk);
-    //uk_edge = uk;
-  //#elif INT8_INT32
-    //uk_intrinsic_selector_int8_int32(MR, NR, uk_vec, &uk);
-    //uk_edge = uk;
-  //#endif
-
 
   #if defined(CHECK)
   #include "check_params.h"
@@ -566,6 +555,9 @@ void prepack_saxpy_A( char orderA, size_t m, size_t k, AB_TYPE *A, size_t ldA, A
 //=======================================================================================
 // DOT PRODCUTS GEMM BASED 
 //=======================================================================================
+
+#ifdef A78AE
+
 //B3A2C0 variation. WARNING: Prepacking wights (A Tensor). 
 void dot_gemm( char orderA, char orderB, char orderC,
 	       size_t m, size_t n, size_t k, 
@@ -590,8 +582,6 @@ void dot_gemm( char orderA, char orderB, char orderC,
 
   if ((m==0) || (n==0) || (k==0)) return;
 
-  //printf("m=%zu x n=%zu x k=%zu | mc=%zu x nc=%zu x kc=%zu\n", m, n, k, MC, NC, KC);
-  //(for (int i =0; i < KC * NC; i++) Bc[i] = 0;
 
   for ( jc=0; jc<n; jc+=NC ) {
     nc = min(n-jc, NC); 
@@ -614,9 +604,9 @@ void dot_gemm( char orderA, char orderB, char orderC,
         mc_pack = (int)ceil((double)mc / (double)MR) * MR;
         
 	//Prepacking A (weights)
-	//if (orderA == 'C') Aptr = &Acol(ic, pc);
-	//else               Aptr = &Arow(ic, pc);
-        //pack_dot_A(orderA, mc, kc, Aptr, ldA, Ac, MR);
+	if (orderA == 'C') Aptr = &Acol(ic, pc);
+	else               Aptr = &Arow(ic, pc);
+        pack_dot_A(orderA, mc, kc, Aptr, ldA, Ac, MR);
 
         for (jr=0; jr<nc; jr+=NR ) {
           nr = min(nc-jr, NR); 
@@ -845,6 +835,7 @@ void prepack_dot_A( char orderA, size_t m, size_t k, AB_TYPE *A, size_t ldA, AB_
   
 }
 
+#endif
 
 //=======================================================================================
 //=======================================================================================

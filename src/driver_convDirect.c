@@ -403,11 +403,12 @@ int main(int argc, char *argv[]) {
         if (algorithm == CONVDIRECT)
           transform_filter_block_blis(c, k, r, s, F,  ldF1,  ldF2,  ldF3, FB, 
 			              ldFB1, ldFB2, ldFB3, ldFB4, tformat, MR, NR);
-	else if (algorithm == LOWERING) 
-	  if(gemm == SDOT_GEMM)
-	    prepack_dot_A( 'C', mm, kk, F, lda, Ac_blis, mc_blis, kc_blis, MR);
-	  else if(gemm == B3A2C0)
-	    prepack_saxpy_A( 'C', mm, kk, F, lda, Ac_blis, mc_blis, kc_blis, MR);
+
+	//else if (algorithm == LOWERING) 
+	  //if(gemm == SDOT_GEMM)
+	    //prepack_dot_A( 'C', mm, kk, F, lda, Ac_blis, mc_blis, kc_blis, MR);
+	  //else if(gemm == B3A2C0)
+	    //prepack_saxpy_A( 'C', mm, kk, F, lda, Ac_blis, mc_blis, kc_blis, MR);
 
         time  = 0.0; 
         t1    = dclock();
@@ -441,9 +442,14 @@ int main(int argc, char *argv[]) {
                                 Ac_blis, Bc_blis, mc_blis, nc_blis, kc_blis, 
 				MR, NR, TH, testConf->LOOP, Ctmp, uk_vec, uk_edge_vec);
 	    } else if (gemm == SDOT_GEMM) {
-	      ldc = ho * wo * n;
-              dot_gemm( 'C', 'C', 'R', mm, nn, kk, F, lda, DEXT, ldb, betap, Y, ldc,
-	               Ac_blis, Bc_blis, mc_blis, nc_blis, kc_blis, MR, NR);
+	      #ifdef A78AE
+	        ldc = ho * wo * n;
+                dot_gemm( 'C', 'C', 'R', mm, nn, kk, F, lda, DEXT, ldb, betap, Y, ldc,
+	                 Ac_blis, Bc_blis, mc_blis, nc_blis, kc_blis, MR, NR);
+              #else
+		printf("SDOT GEMM Only supported for A78AE arch.\n");
+		exit(-1);
+              #endif
 	    } else {
 	      printf("ERROR: Algorithm unsupported.\n"); exit(-1);
 	    }

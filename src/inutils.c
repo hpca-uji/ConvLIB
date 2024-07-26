@@ -205,17 +205,15 @@ testConfig_t* new_CNN_Test_Config(char * argv[]) {
   #ifdef NQ_FP32
     printf(" |  [%s*%s] Data Type                      |  %s%-74s%s|\n", COLOR_BOLDYELLOW, COLOR_RESET, COLOR_BOLDCYAN, "NQ_FP32", COLOR_RESET);
   #elif FQ_FP32
-    printf(" |  [%s*%s] Data Type                      |  %s%-74s%s|\n", COLOR_BOLDYELLOW, COLOR_RESET, COLOR_BOLDCYAN, "FQ_FP32 (INT8 | FP32)", COLOR_RESET);
+    printf(" |  [%s*%s] Data Type                      |  %s%-74s%s|\n", COLOR_BOLDYELLOW, COLOR_RESET, COLOR_BOLDCYAN, "FQ_FP32 (INT8|FP32)", COLOR_RESET);
   #elif NQ_INT32
     printf(" |  [%s*%s] Data Type                      |  %s%-74s%s|\n", COLOR_BOLDYELLOW, COLOR_RESET, COLOR_BOLDCYAN, "NQ_INT32", COLOR_RESET);
   #elif FQ_INT32
-    printf(" |  [%s*%s] Data Type                      |  %s%-74s%s|\n", COLOR_BOLDYELLOW, COLOR_RESET, COLOR_BOLDCYAN, "FQ_INT32 (INT8 | INT32)", COLOR_RESET);
+    printf(" |  [%s*%s] Data Type                      |  %s%-74s%s|\n", COLOR_BOLDYELLOW, COLOR_RESET, COLOR_BOLDCYAN, "FQ_INT32 (INT8|INT32)", COLOR_RESET);
+  #elif Q_INT8_INT32
+    printf(" |  [%s*%s] Data Type                      |  %s%-74s%s|\n", COLOR_BOLDYELLOW, COLOR_RESET, COLOR_BOLDCYAN, "Q_INT8_INT32 (INT8|INT32)", COLOR_RESET);
   #elif FP16
     printf(" |  [%s*%s] Data Type                      |  %s%-74s%s|\n", COLOR_BOLDYELLOW, COLOR_RESET, COLOR_BOLDCYAN, "FP16", COLOR_RESET);
-  #elif INT8_INT32_S8
-    printf(" |  [%s*%s] Data Type                      |  %s%-74s%s|\n", COLOR_BOLDYELLOW, COLOR_RESET, COLOR_BOLDCYAN, "INT8|INT32 (S8)", COLOR_RESET);
-  #elif INT8_INT32_U8
-    printf(" |  [%s*%s] Data Type                      |  %s%-74s%s|\n", COLOR_BOLDYELLOW, COLOR_RESET, COLOR_BOLDCYAN, "INT8|INT32 (U8)", COLOR_RESET);
   #else
     printf(" |  [%s*%s] Data Type                      |  %s%-74s%s|\n", COLOR_BOLDYELLOW, COLOR_RESET, COLOR_BOLDCYAN, "UNKNOWN", COLOR_RESET);
   #endif
