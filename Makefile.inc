@@ -3,7 +3,7 @@
 #   ARM:
 #    [*] A57
 #    [*] A78AE
-#    [*] Carmel
+#    [*] CARMEL
 #   RISC-V:
 #    [*] C906
 #    [*] C910
@@ -11,7 +11,7 @@
 # Architectures with ARMv8 support:
 #    > A57    (Jetson Nano)
 #    > A78AE  (Jetson Orin)
-#    > Carmel (Jetson Xavier)
+#    > CARMEL (Jetson Xavier)
 # Architectures with RISC-V v0.7 support:
 #    > C906
 #    > C910
@@ -23,8 +23,9 @@ PROCESSOR = A78AE
 #Compilation Options. Possible values [T | F]
 #  [*] T: True and F: False
 #----------------------------------------------------------
-OPENBLAS_ENABLE = F
-BLIS_ENABLE     = F
+OPENBLAS_ENABLE   = F
+BLIS_ENABLE       = F
+POWER_CONSUMPTION = T
 #----------------------------------------------------------
 
 
@@ -42,8 +43,8 @@ BLIS_ENABLE     = F
 #  [*] FQ_FP32        #Input:INT8  + Pack:FP32  + Micro:FP32
 #  [*] FQ_INT32       #Input:INT8  + Pack:FP32  + Micro:FP32
 #  [*] Q_INT8_INT32   #Input:INT8  + Pack:INT8  + Micro:INT8+INT32
-#  [] NQ_FP16        #Input:FP16  + Pack:FP16  + Micro:FP16
-#  [] FQ_FP16        #Input:INT8  + Pack:FP32  + Micro:FP32
+#  [] NQ_FP16         #Input:FP16  + Pack:FP16  + Micro:FP16 #TODO:
+#  [] FQ_FP16         #Input:INT8  + Pack:FP32  + Micro:FP32 #TODO:
 #----------------------------------------------------------
 DTYPE = NQ_FP32
 #----------------------------------------------------------
@@ -54,5 +55,6 @@ DTYPE = NQ_FP32
 #----------------------------------------------------------
 OPENBLAS_HOME = ./src/OpenBLAS/install/
 BLIS_HOME     = ./src/blis/install/
+PMLIB_HOME    = /home/martineh/software/pmlib/client/install/
 #----------------------------------------------------------
 

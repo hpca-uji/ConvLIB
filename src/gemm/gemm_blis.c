@@ -282,17 +282,6 @@ void gemm_blis_A3B2C0( char orderA, char orderB, char orderC,
 
   fselector(MR, NR, LOWERING, A3B2C0, uk_vec, uk_edge_vec, &uk, &uk_edge);
 
-  //#ifdef FP32
-    //uk_asm_selector_fp32(MR, NR, uk_vec, &uk);
-    //uk_asm_edge_selector_fp32(MR, NR, uk_edge_vec, &uk_edge);
-  //#elif FP16
-    //uk_intrinsic_selector_fp16(MR, NR, uk_vec, &uk);
-    //uk_edge = uk;
-  //#elif INT8_INT32
-    //uk_intrinsic_selector_int8_int32(MR, NR, uk_vec, &uk);
-    //uk_edge = uk;
-  //#endif
-
 
   #if defined(CHECK)
   #include "check_params.h"
@@ -566,6 +555,9 @@ void prepack_saxpy_A( char orderA, size_t m, size_t k, AB_TYPE *A, size_t ldA, A
 //=======================================================================================
 // DOT PRODCUTS GEMM BASED 
 //=======================================================================================
+
+#ifdef A78AE
+
 //B3A2C0 variation. WARNING: Prepacking wights (A Tensor). 
 void dot_gemm( char orderA, char orderB, char orderC,
 	       size_t m, size_t n, size_t k, 
@@ -573,12 +565,10 @@ void dot_gemm( char orderA, char orderB, char orderC,
 	       C_TYPE beta, C_TYPE *C, size_t ldC, AB_PACK_TYPE *Ac, AB_PACK_TYPE *Bc, 
 	       size_t MC, size_t NC, size_t KC, int MR, int NR) {
 
-
   int ic, jc, pc, mc, nc, kc, ir, jr, mr, nr, j, i, th, th_id, kc_pack, mc_pack; 
   C_TYPE  zero = 0, one = 1, beta_edge = 0, betaI, *Ctmp_th, *Cptr, alpha = 1; 
 
   AB_TYPE *Aptr, *Bptr;
-  AB_PACK_TYPE *Acptr;
 
   C_TYPE aux[MR * NR];
 
@@ -588,14 +578,15 @@ void dot_gemm( char orderA, char orderB, char orderC,
   //TODO: pass an array with all micro-kernels availables. Now, only 4x16 is supported. 
   fselector(MR, NR, LOWERING, SDOT_GEMM, NULL, NULL, &uk, &uk_edge);
 
+  //C-order by rows  
+  ldC = n;
+
   if ((m==0) || (n==0) || (k==0)) return;
 
-  //printf("m=%zu x n=%zu x k=%zu | mc=%zu x nc=%zu x kc=%zu\n", m, n, k, MC, NC, KC);
-  //(for (int i =0; i < KC * NC; i++) Bc[i] = 0;
 
   for ( jc=0; jc<n; jc+=NC ) {
     nc = min(n-jc, NC); 
-    Acptr = Ac;
+    //Acptr = Ac;
 
     for ( pc=0; pc<k; pc+=KC) {
       kc = min(k-pc, KC); 
@@ -604,19 +595,19 @@ void dot_gemm( char orderA, char orderB, char orderC,
       if (orderB == 'C') Bptr = &Bcol(pc,jc);
       else               Bptr = &Brow(pc,jc);
        
-      vpack_dot_B(orderB, kc, nc, Bptr, ldB, Bc, NR);
+      pack_dot_B(orderB, kc, nc, Bptr, ldB, Bc, NR);
          
       if ( pc==0 ) betaI = beta;
       else betaI = one;
         
       for ( ic=0; ic<m; ic+=MC ) {
         mc = min(m-ic, MC); 
-        mc_pack = (int)ceil((double)mc / (double)MR) * MR;
+        //mc_pack = (int)ceil((double)mc / (double)MR) * MR;
         
 	//Prepacking A (weights)
-	//if (orderA == 'C') Aptr = &Acol(ic, pc);
-	//else               Aptr = &Arow(ic, pc);
-        //pack_dot_A(orderA, mc, kc, Aptr, ldA, Ac, MR);
+	if (orderA == 'C') Aptr = &Acol(ic, pc);
+	else               Aptr = &Arow(ic, pc);
+        pack_dot_A(orderA, mc, kc, Aptr, ldA, Ac, MR);
 
         for (jr=0; jr<nc; jr+=NR ) {
           nr = min(nc-jr, NR); 
@@ -625,19 +616,19 @@ void dot_gemm( char orderA, char orderB, char orderC,
             
 	    if ( orderC=='C' )  Cptr = &Ccol(ic+ir,jc+jr);
 	    else                Cptr = &Crow(ic+ir,jc+jr);
-            
-	    sdot_microkernel(mr, nr, MR, NR, &Acptr[ir*kc_pack], &Bc[jr*kc_pack], 
+
+	    sdot_microkernel(mr, nr, MR, NR, &Ac[ir*kc_pack], &Bc[jr*kc_pack], 
                              Cptr, kc, ldC, alpha, betaI, aux, uk, uk_edge);
              
           }
         }
         	
-        Acptr += kc_pack * mc_pack; 
+        //Acptr += kc_pack * mc_pack; 
          	
       }
     }
   }
-  
+ 
 
 }
 
@@ -651,6 +642,7 @@ void pack_dot_A(char orderA, int mc, int kc, AB_TYPE *M, int ldM, AB_PACK_TYPE *
   int kr_lim, i, j, ii, jj, mr;
 
   if (orderA == 'C') {
+
     for (i = 0; i < mc; i += MR) {
       mr = min(MR, mc - i);
       for (j = 0; j < kc; j += KR) {
@@ -659,17 +651,17 @@ void pack_dot_A(char orderA, int mc, int kc, AB_TYPE *M, int ldM, AB_PACK_TYPE *
 	  for (jj = 0; jj < kr_lim; jj++) {
             Mc[p] = Mcol(i + ii, j + jj); 
             p++;
-	    //printf("MC[%3d]=%d\n", p-1, Mc[p-1]);
           }
-	  for (; jj < KR; jj++) { 
-            Mc[p] = 0; p++; 
-	    //printf("MC-padding[%3d]=%d\n", p-1, 0);
-	  }
+	  p += KR - jj;
+	  //for (; jj < KR; jj++) { 
+          //Mc[p] = 0; p++; 
+	  //}
 	}
+        //for( ii = 0; ii < (MR - mr) * KR; ii++) { Mc[p] = 0; p++; }
+	p += (MR - mr) * KR;
       }
     }
-    
-    for( i = 0; i < (MR - mr) * KR; i++) { Mc[p] = 0; p++; }
+
 
   } else { printf("Not implemented\n"); exit(-1); }
   
@@ -845,6 +837,7 @@ void prepack_dot_A( char orderA, size_t m, size_t k, AB_TYPE *A, size_t ldA, AB_
   
 }
 
+#endif
 
 //=======================================================================================
 //=======================================================================================
@@ -1076,6 +1069,7 @@ double gemm_validation(int order, int transA, int transB, AB_TYPE *A, AB_TYPE *B
         tmp = (double) Cgcol(i,j)*Cgcol(i,j);
 	nrm += tmp*tmp;
 	tmp = (double) dabs(Cgcol(i,j)-Ccol(i,j)); 
+	//printf("[%d][%d] = %d vs %d\n", i, j, Cgcol(i,j), Ccol(i,j));
 	error += tmp*tmp;
       }
   else

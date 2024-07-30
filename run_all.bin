@@ -1,0 +1,21 @@
+
+
+sed -i '/DTYPE/c\DTYPE = FQ_INT32' Makefile.inc
+make clean;
+make && ./gemm.bin cnn/Resnet50-imagenet output/FQ_INT32
+
+
+sed -i '/DTYPE/c\DTYPE = FQ_FP32' Makefile.inc
+make clean;
+make && ./gemm.bin cnn/Resnet50-imagenet output/FQ_FP32
+
+
+sed -i '/DTYPE/c\DTYPE = NQ_INT32' Makefile.inc
+make clean;
+make && ./gemm.bin cnn/Resnet50-imagenet output/NQ_INT32
+
+
+sed -i '/DTYPE/c\DTYPE = NQ_FP32' Makefile.inc
+make clean;
+make && ./gemm.bin cnn/Resnet50-imagenet output/NQ_FP32
+

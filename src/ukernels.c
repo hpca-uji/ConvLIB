@@ -17,15 +17,49 @@ void fselector(int MR, int NR, int algorithm, int gemm, UK_TYPE *uk_vec, UK_EDGE
     uk_intrinsic_selector_fp16(MR, NR, uk_vec, uk);
     *uk_edge = *uk;
   #elif Q_INT8_INT32
-    if ((algorithm == LOWERING) && (gemm == SDOT_GEMM))
-      *uk = uk_intrinsic_quantize_int8_4x16_sdot;
-    else
-      uk_intrinsic_selector_int8_int32(MR, NR, uk_vec, uk);
+    #ifdef A78AE
+      if ((algorithm == LOWERING) && (gemm == SDOT_GEMM))
+        *uk = uk_intrinsic_quantize_int8_4x16_sdot;
+      else
+        uk_intrinsic_selector_int8_int32(MR, NR, uk_vec, uk);
+    #else
+        uk_intrinsic_selector_int8_int32(MR, NR, uk_vec, uk);
+    #endif
     *uk_edge = *uk;
   #endif
 
 }
 
+
+
+//Generic micro-kernel for other convolutional algorithms
+void generic_microkernel(int mr, int nr, int MR, int NR, AB_PACK_TYPE *A, AB_PACK_TYPE *B, 
+		         C_TYPE *C, uint32_t kc, uint32_t ldC, C_TYPE alpha, C_TYPE beta, 
+			 C_TYPE *aux, UK_TYPE uk, UK_EDGE_TYPE uk_edge) {
+
+  #if defined(NQ_FP32) || defined(FQ_FP32)
+    if (mr == MR && nr == NR)
+      uk(kc, &alpha, A, B, &beta, C, ldC * sizeof(float));
+    else
+      uk_edge(mr, nr, MR, NR, kc, &alpha, A, B, &beta, aux, C, ldC);
+  #else
+    if ((mr == MR) && (nr == NR))
+      uk(kc, A, B, C, beta, ldC); 
+    else {
+      uk_edge(kc, A, B, aux, 0, MR);
+      for (int j = 0; j < nr; j++)
+      for (int i = 0; i < mr; i++)
+        C[j*ldC + i] = (beta) * C[j*ldC + i] + aux[j * MR + i];
+     }
+  #endif
+
+}
+
+//============================================================================================
+// MICRO-KERNELS FOR DOT PRODUCT
+//============================================================================================
+
+#ifdef A78AE
 
 //Generic micro-kernel for Lowering+GEMM based on DOT Products.
 void sdot_microkernel(int mr, int nr, int MR, int NR, AB_PACK_TYPE *A, AB_PACK_TYPE *B, 
@@ -52,36 +86,6 @@ void sdot_microkernel(int mr, int nr, int MR, int NR, AB_PACK_TYPE *A, AB_PACK_T
 
 }
 
-//Generic micro-kernel for other convolutional algorithms
-void generic_microkernel(int mr, int nr, int MR, int NR, AB_PACK_TYPE *A, AB_PACK_TYPE *B, 
-		         C_TYPE *C, uint32_t kc, uint32_t ldC, C_TYPE alpha, C_TYPE beta, 
-			 C_TYPE *aux, UK_TYPE uk, UK_EDGE_TYPE uk_edge) {
-
-  #if defined(NQ_FP32) || defined(FQ_FP32)
-    if (mr == MR && nr == NR)
-      uk(kc, &alpha, A, B, &beta, C, ldC * sizeof(float));
-    else
-      uk_edge(mr, nr, MR, NR, kc, &alpha, A, B, &beta, aux, C, ldC);
-  #else
-    if ((mr == MR) && (nr == NR))
-      uk(kc, A, B, C, beta, ldC); 
-      //ukernel_intrinsic_16x8_A78_fp16(kc, A, B, C, beta, ldC); 
-    else {
-      uk_edge(kc, A, B, aux, 0, MR);
-      //ukernel_intrinsic_16x8_A78_fp16(kc, A, B, aux, 0, MR);
-      for (int j = 0; j < nr; j++)
-      for (int i = 0; i < mr; i++)
-        C[j*ldC + i] = (beta) * C[j*ldC + i] + aux[j * MR + i];
-     }
-  #endif
-
-}
-
-//============================================================================================
-// MICRO-KERNELS FOR DOT PRODUCT
-//============================================================================================
-
-#ifdef A78AE
 void uk_intrinsic_quantize_int8_4x16_sdot(int kc, int8_t  *Ar, int8_t *Br, int32_t *Cr, int32_t beta, int ldC) { 
 
   int KR = 16;
@@ -380,269 +384,6 @@ void uk_intrinsic_quantize_int8_4x4_sdot(int kc, int8_t  *Ar, int8_t *Br, int32_
 
 }
 
-void uk_intrinsic_quantize_int8_6x16_sdot(int kc, int8_t  *Ar, int8_t *Br, int32_t *Cr, int32_t beta, int ldC) { 
-
-  int KR = 16;
-
-  int8x16_t A0, A1, A2, A3, A4, A5, B0, B1, B2, B3;
-
-  int32x4_t C00, C01, C02, C03,
-	    C10, C11, C12, C13,
-	    C20, C21, C22, C23,
-	    C30, C31, C32, C33,
-	    C40, C41, C42, C43,
-	    C50, C51, C52, C53;
-
-
-  if (beta == 0) {
-    C00 = vdupq_n_s32(0);
-    C01 = vdupq_n_s32(0);
-    C02 = vdupq_n_s32(0);
-    C03 = vdupq_n_s32(0);
-    C10 = vdupq_n_s32(0);
-    C11 = vdupq_n_s32(0);
-    C12 = vdupq_n_s32(0);
-    C13 = vdupq_n_s32(0);
-    C20 = vdupq_n_s32(0);
-    C21 = vdupq_n_s32(0);
-    C22 = vdupq_n_s32(0);
-    C23 = vdupq_n_s32(0);
-    C30 = vdupq_n_s32(0);
-    C31 = vdupq_n_s32(0);
-    C32 = vdupq_n_s32(0);
-    C33 = vdupq_n_s32(0);
-    C40 = vdupq_n_s32(0);
-    C41 = vdupq_n_s32(0);
-    C42 = vdupq_n_s32(0);
-    C43 = vdupq_n_s32(0);
-    C50 = vdupq_n_s32(0);
-    C51 = vdupq_n_s32(0);
-    C52 = vdupq_n_s32(0);
-    C53 = vdupq_n_s32(0);
-  } else {
-    C00 = vld1q_s32(&Crow(0, 0));  
-    C01 = vld1q_s32(&Crow(0, 4));  
-    C02 = vld1q_s32(&Crow(0, 8));  
-    C03 = vld1q_s32(&Crow(0, 12));  
-
-    C10 = vld1q_s32(&Crow(1, 0));  
-    C11 = vld1q_s32(&Crow(1, 4));  
-    C12 = vld1q_s32(&Crow(1, 8));  
-    C13 = vld1q_s32(&Crow(1, 12));  
-    
-    C20 = vld1q_s32(&Crow(2, 0));  
-    C21 = vld1q_s32(&Crow(2, 4));  
-    C22 = vld1q_s32(&Crow(2, 8));  
-    C23 = vld1q_s32(&Crow(2, 12));  
-    
-    C30 = vld1q_s32(&Crow(3, 0));  
-    C31 = vld1q_s32(&Crow(3, 4));  
-    C32 = vld1q_s32(&Crow(3, 8));  
-    C33 = vld1q_s32(&Crow(3, 12));  
-    
-    C40 = vld1q_s32(&Crow(4, 0));  
-    C41 = vld1q_s32(&Crow(4, 4));  
-    C42 = vld1q_s32(&Crow(4, 8));  
-    C43 = vld1q_s32(&Crow(4, 12));  
-    
-    C50 = vld1q_s32(&Crow(5, 0));  
-    C51 = vld1q_s32(&Crow(5, 4));  
-    C52 = vld1q_s32(&Crow(5, 8));  
-    C53 = vld1q_s32(&Crow(5, 12));  
-  }
-
-  //Loop kc  (+=16)
-  for (int i = 0; i < kc; i += KR) {
-    //Load A: (4 x 16)
-    A0 = vld1q_s8(&Ar[0]);
-    A1 = vld1q_s8(&Ar[16]);
-    A2 = vld1q_s8(&Ar[32]);
-    A3 = vld1q_s8(&Ar[48]);
-    A4 = vld1q_s8(&Ar[64]);
-    A5 = vld1q_s8(&Ar[80]);
-
-
-    //Dot Product
-    //----------------------------------
-    //Rep +1
-    //----------------------------------
-    //Load B: (16 x 4) 
-    B0 = vld1q_s8(&Br[0]);
-    B1 = vld1q_s8(&Br[16]);
-    B2 = vld1q_s8(&Br[32]);
-    B3 = vld1q_s8(&Br[48]);
-
-    C00 = vdotq_laneq_s32(C00, B0, A0, 0);
-    C10 = vdotq_laneq_s32(C10, B0, A1, 0);
-    C20 = vdotq_laneq_s32(C20, B0, A2, 0);
-    C30 = vdotq_laneq_s32(C30, B0, A3, 0);
-    C40 = vdotq_laneq_s32(C40, B0, A4, 0);
-    C50 = vdotq_laneq_s32(C50, B0, A5, 0);
-  
-    C01 = vdotq_laneq_s32(C01, B1, A0, 0);
-    C11 = vdotq_laneq_s32(C11, B1, A1, 0);
-    C21 = vdotq_laneq_s32(C21, B1, A2, 0);
-    C31 = vdotq_laneq_s32(C31, B1, A3, 0);
-    C41 = vdotq_laneq_s32(C41, B1, A4, 0);
-    C51 = vdotq_laneq_s32(C51, B1, A5, 0);
-
-    C02 = vdotq_laneq_s32(C02, B2, A0, 0);
-    C12 = vdotq_laneq_s32(C12, B2, A1, 0);
-    C22 = vdotq_laneq_s32(C22, B2, A2, 0);
-    C32 = vdotq_laneq_s32(C32, B2, A3, 0);
-    C42 = vdotq_laneq_s32(C42, B2, A4, 0);
-    C52 = vdotq_laneq_s32(C52, B2, A5, 0);
-  
-    C03 = vdotq_laneq_s32(C03, B3, A0, 0);
-    C13 = vdotq_laneq_s32(C13, B3, A1, 0);
-    C23 = vdotq_laneq_s32(C23, B3, A2, 0);
-    C33 = vdotq_laneq_s32(C33, B3, A3, 0);
-    C43 = vdotq_laneq_s32(C43, B3, A4, 0);
-    C53 = vdotq_laneq_s32(C53, B3, A5, 0);
- 
-    //----------------------------------
-    //Rep +2
-    //----------------------------------
-    //Load B: (16 x 4) 
-    B0 = vld1q_s8(&Br[64]);
-    B1 = vld1q_s8(&Br[80]);
-    B2 = vld1q_s8(&Br[96]);
-    B3 = vld1q_s8(&Br[112]);
-    C00 = vdotq_laneq_s32(C00, B0, A0, 1);
-    C10 = vdotq_laneq_s32(C10, B0, A1, 1);
-    C20 = vdotq_laneq_s32(C20, B0, A2, 1);
-    C30 = vdotq_laneq_s32(C30, B0, A3, 1);
-    C40 = vdotq_laneq_s32(C40, B0, A4, 1);
-    C50 = vdotq_laneq_s32(C50, B0, A5, 1);
-  
-    C01 = vdotq_laneq_s32(C01, B1, A0, 1);
-    C11 = vdotq_laneq_s32(C11, B1, A1, 1);
-    C21 = vdotq_laneq_s32(C21, B1, A2, 1);
-    C31 = vdotq_laneq_s32(C31, B1, A3, 1);
-    C41 = vdotq_laneq_s32(C41, B1, A4, 1);
-    C51 = vdotq_laneq_s32(C51, B1, A5, 1);
-  
-    C02 = vdotq_laneq_s32(C02, B2, A0, 1);
-    C12 = vdotq_laneq_s32(C12, B2, A1, 1);
-    C22 = vdotq_laneq_s32(C22, B2, A2, 1);
-    C32 = vdotq_laneq_s32(C32, B2, A3, 1);
-    C42 = vdotq_laneq_s32(C42, B2, A4, 1);
-    C52 = vdotq_laneq_s32(C52, B2, A5, 1);
-    
-    C03 = vdotq_laneq_s32(C03, B3, A0, 1);
-    C13 = vdotq_laneq_s32(C13, B3, A1, 1);
-    C23 = vdotq_laneq_s32(C23, B3, A2, 1);
-    C33 = vdotq_laneq_s32(C33, B3, A3, 1);
-    C43 = vdotq_laneq_s32(C43, B3, A4, 1);
-    C53 = vdotq_laneq_s32(C53, B3, A5, 1);
-    
-    //----------------------------------
-    //Rep +3
-    //----------------------------------
-    //Load B: (16 x 4) 
-    B0 = vld1q_s8(&Br[128]);
-    B1 = vld1q_s8(&Br[144]);
-    B2 = vld1q_s8(&Br[160]);
-    B3 = vld1q_s8(&Br[176]);
-    C00 = vdotq_laneq_s32(C00, B0, A0, 2);
-    C10 = vdotq_laneq_s32(C10, B0, A1, 2);
-    C20 = vdotq_laneq_s32(C20, B0, A2, 2);
-    C30 = vdotq_laneq_s32(C30, B0, A3, 2);
-    C40 = vdotq_laneq_s32(C40, B0, A4, 2);
-    C50 = vdotq_laneq_s32(C50, B0, A5, 2);
-    
-    C01 = vdotq_laneq_s32(C01, B1, A0, 2);
-    C11 = vdotq_laneq_s32(C11, B1, A1, 2);
-    C21 = vdotq_laneq_s32(C21, B1, A2, 2);
-    C31 = vdotq_laneq_s32(C31, B1, A3, 2);
-    C41 = vdotq_laneq_s32(C41, B1, A4, 2);
-    C51 = vdotq_laneq_s32(C51, B1, A5, 2);
-  
-    C02 = vdotq_laneq_s32(C02, B2, A0, 2);
-    C12 = vdotq_laneq_s32(C12, B2, A1, 2);
-    C22 = vdotq_laneq_s32(C22, B2, A2, 2);
-    C32 = vdotq_laneq_s32(C32, B2, A3, 2);
-    C42 = vdotq_laneq_s32(C42, B2, A4, 2);
-    C52 = vdotq_laneq_s32(C52, B2, A5, 2);
-    
-    C03 = vdotq_laneq_s32(C03, B3, A0, 2);
-    C13 = vdotq_laneq_s32(C13, B3, A1, 2);
-    C23 = vdotq_laneq_s32(C23, B3, A2, 2);
-    C33 = vdotq_laneq_s32(C33, B3, A3, 2);
-    C43 = vdotq_laneq_s32(C43, B3, A4, 2);
-    C53 = vdotq_laneq_s32(C53, B3, A5, 2);
-    
-    //----------------------------------
-    //Rep +4
-    //----------------------------------
-    //Load B: (16 x 4) 
-    B0 = vld1q_s8(&Br[192]);
-    B1 = vld1q_s8(&Br[208]);
-    B2 = vld1q_s8(&Br[224]);
-    B3 = vld1q_s8(&Br[240]);
-    C00 = vdotq_laneq_s32(C00, B0, A0, 3);
-    C10 = vdotq_laneq_s32(C10, B0, A1, 3);
-    C20 = vdotq_laneq_s32(C20, B0, A2, 3);
-    C30 = vdotq_laneq_s32(C30, B0, A3, 3);
-    C40 = vdotq_laneq_s32(C40, B0, A4, 3);
-    C50 = vdotq_laneq_s32(C50, B0, A5, 3);
-    
-    C01 = vdotq_laneq_s32(C01, B1, A0, 3);
-    C11 = vdotq_laneq_s32(C11, B1, A1, 3);
-    C21 = vdotq_laneq_s32(C21, B1, A2, 3);
-    C31 = vdotq_laneq_s32(C31, B1, A3, 3);
-    C41 = vdotq_laneq_s32(C41, B1, A4, 3);
-    C51 = vdotq_laneq_s32(C51, B1, A5, 3);
-  
-    C02 = vdotq_laneq_s32(C02, B2, A0, 3);
-    C12 = vdotq_laneq_s32(C12, B2, A1, 3);
-    C22 = vdotq_laneq_s32(C22, B2, A2, 3);
-    C32 = vdotq_laneq_s32(C32, B2, A3, 3);
-    C42 = vdotq_laneq_s32(C42, B2, A4, 3);
-    C52 = vdotq_laneq_s32(C52, B2, A5, 3);
-    
-    C03 = vdotq_laneq_s32(C03, B3, A0, 3);
-    C13 = vdotq_laneq_s32(C13, B3, A1, 3);
-    C23 = vdotq_laneq_s32(C23, B3, A2, 3);
-    C33 = vdotq_laneq_s32(C33, B3, A3, 3);
-    C43 = vdotq_laneq_s32(C43, B3, A4, 3);
-    C53 = vdotq_laneq_s32(C53, B3, A5, 3);
-
-    Ar = Ar + 96;
-    Br = Br + 256;
-
-  }
-
-  vst1q_s32(&Crow(0, 0),  C00);  
-  vst1q_s32(&Crow(0, 4),  C01);  
-  vst1q_s32(&Crow(0, 8),  C02);  
-  vst1q_s32(&Crow(0, 12), C03);  
-
-  vst1q_s32(&Crow(1, 0),  C10);  
-  vst1q_s32(&Crow(1, 4),  C11);  
-  vst1q_s32(&Crow(1, 8),  C12);  
-  vst1q_s32(&Crow(1, 12), C13);  
-    
-  vst1q_s32(&Crow(2, 0),  C20);  
-  vst1q_s32(&Crow(2, 4),  C21);  
-  vst1q_s32(&Crow(2, 8),  C22);  
-  vst1q_s32(&Crow(2, 12), C23);  
-    
-  vst1q_s32(&Crow(3, 0),  C30);  
-  vst1q_s32(&Crow(3, 4),  C31);  
-  vst1q_s32(&Crow(3, 8),  C32);  
-  vst1q_s32(&Crow(3, 12), C33);  
-
-  vst1q_s32(&Crow(4, 0),  C40);  
-  vst1q_s32(&Crow(4, 4),  C41);  
-  vst1q_s32(&Crow(4, 8),  C42);  
-  vst1q_s32(&Crow(4, 12), C43);  
-
-  vst1q_s32(&Crow(5, 0),  C50);  
-  vst1q_s32(&Crow(5, 4),  C51);  
-  vst1q_s32(&Crow(5, 8),  C52);  
-  vst1q_s32(&Crow(5, 12), C53);  
-}
 #endif
 
 //============================================================================================
