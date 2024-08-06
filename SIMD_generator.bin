@@ -55,23 +55,20 @@ MAXVECTOR=$(tail -1 $CONFIG_PATH/$CPU | cut -f2)
 rm src/asm_generator/ukernels/*
 
 if [ "$ARCH" = "riscv" ]; then
-  ./src/asm_generator/ukernels_generator.py --arch riscv --data FP32 --vlen ${VLEN} \
-	                                    --maxvec ${MAXVECTOR} ${_OP} ${_REORDER} ${_PIPELINING} ${_UNROLL}
     
-    #Generating Intrinsic micro-kernels: INT8-INT32 | INT8-INT16 | fp16 | FP32 
+    #Generating Intrinsic micro-kernels: INT8-INT32 | INT32 | FP32 
     rm src/intrinsic_generator/ukernels/*
     cd src/intrinsic_generator/ 
     ./instrinsics_generator.py --vlen ${VLEN} --arch riscv ${_DUP} --cpu "${CPU}" ${_OP}
 
     cd ../..
 else
-    ./src/asm_generator/ukernels_generator.py --arch armv8 --data FP32 --vlen ${VLEN} \
-	                                      --maxvec ${MAXVECTOR} ${_PIPELINING} ${_UNROLL}
 
-    #Generating Intrinsic micro-kernels: INT8-INT32 | INT8-INT16 | fp16 | FP32 
+    #Generating Intrinsic micro-kernels: INT8-INT32 | INT32 | FP32 
     rm src/intrinsic_generator/ukernels/*
     cd src/intrinsic_generator/ 
     ./instrinsics_generator.py --vlen ${VLEN} --arch armv8 ${_DUP}
+
     cd ../..
 fi
 

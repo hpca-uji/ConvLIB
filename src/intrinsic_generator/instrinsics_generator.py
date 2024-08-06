@@ -202,7 +202,7 @@ def micro_kernel_int8_int32_armv8_generator(arch, MR, NR, lane, dtype, vlen, mac
     micro += f"  if (mr != MR || nr != NR)\n"
     micro += f"    for (int j = 0; j < nr; j++)\n"
     micro += f"      for (int i = 0; i < mr; i++)\n"
-    micro += f"        Cor[j*ldC + i] = (betaI) * Cor[j*ldC + i] + Ctmp[j * MR + i];\n"
+    micro += f"        Cor[j*Clda + i] = (betaI) * Cor[j*Clda + i] + Ctmp[j * MR + i];\n"
 
     micro += "}\n"
     
@@ -324,7 +324,7 @@ def micro_kernel_int8_int32_u8_armv8_generator(arch, MR, NR, lane, dtype, vlen, 
     micro += f"  if (mr != MR || nr != NR)\n"
     micro += f"    for (int j = 0; j < nr; j++)\n"
     micro += f"      for (int i = 0; i < mr; i++)\n"
-    micro += f"        Cor[j*ldC + i] = (betaI) * Cor[j*ldC + i] + Ctmp[j * MR + i];\n"
+    micro += f"        Cor[j*Clda + i] = (betaI) * Cor[j*Clda + i] + Ctmp[j * MR + i];\n"
     micro += "}\n"
     
     cfile.write(micro)
@@ -349,7 +349,7 @@ def micro_kernel_int8_int32_s8_armv8_generator(arch, MR, NR, lane, dtype, vlen, 
     if macros:
         micro += f"#include \"uKernels_intrinsic_{dtype}.h\"\n\n"
 
-        micro += f"#define Crref(i,j) Cr[j*Clda+i]\n"
+        micro += f"#define Crref(i,j) Cr[j*ldC+i]\n"
         micro += f"#define vstoreC_{dtype}(mem, vreg)                    vst1q_s32(mem, vreg)\n"
         micro += f"#define vinit_{dtype}(vreg, value)                    vreg  = vmovq_n_s32(value)\n"
         micro += f"#define vloadC_{dtype}(vreg, mem)                     vreg  = vld1q_s32(mem)\n"
@@ -481,7 +481,7 @@ def micro_kernel_int8_int32_s8_armv8_generator(arch, MR, NR, lane, dtype, vlen, 
     micro += f"  if (mr != MR || nr != NR)\n"
     micro += f"    for (int j = 0; j < nr; j++)\n"
     micro += f"      for (int i = 0; i < mr; i++)\n"
-    micro += f"        Cor[j*ldC + i] = (betaI) * Cor[j*ldC + i] + Ctmp[j * MR + i];\n"
+    micro += f"        Cor[j*Clda + i] = (betaI) * Cor[j*Clda + i] + Ctmp[j * MR + i];\n"
     micro += "}\n"
     
     cfile.write(micro)
@@ -592,7 +592,7 @@ def micro_kernel_int8_int16_armv8_generator(arch, MR, NR, lane, dtype, vlen, mac
     micro += f"  if (mr != MR || nr != NR)\n"
     micro += f"    for (int j = 0; j < nr; j++)\n"
     micro += f"      for (int i = 0; i < mr; i++)\n"
-    micro += f"        Cor[j*ldC + i] = (betaI) * Cor[j*ldC + i] + Ctmp[j * MR + i];\n"
+    micro += f"        Cor[j*Clda + i] = (betaI) * Cor[j*Clda + i] + Ctmp[j * MR + i];\n"
     micro += "}\n"
     
     cfile.write(micro)
@@ -682,7 +682,7 @@ def micro_kernel_fp32_armv8_generator(arch, MR, NR, lane, dtype, vlen, macros, c
     micro += f"  if (mr != MR || nr != NR)\n"
     micro += f"    for (int j = 0; j < nr; j++)\n"
     micro += f"      for (int i = 0; i < mr; i++)\n"
-    micro += f"        Cor[j*ldC + i] = (betaI) * Cor[j*ldC + i] + Ctmp[j * MR + i];\n"
+    micro += f"        Cor[j*Clda + i] = (betaI) * Cor[j*Clda + i] + Ctmp[j * MR + i];\n"
    
     micro += "}\n"
 
@@ -772,7 +772,7 @@ def micro_kernel_int32_armv8_generator(arch, MR, NR, lane, dtype, vlen, macros, 
     micro += f"  if (mr != MR || nr != NR)\n"
     micro += f"    for (int j = 0; j < nr; j++)\n"
     micro += f"      for (int i = 0; i < mr; i++)\n"
-    micro += f"        Cor[j*ldC + i] = (betaI) * Cor[j*ldC + i] + Ctmp[j * MR + i];\n"
+    micro += f"        Cor[j*Clda + i] = (betaI) * Cor[j*Clda + i] + Ctmp[j * MR + i];\n"
     
     micro += "}\n"
 
@@ -1190,8 +1190,9 @@ def main() -> int:
         stepNR  = dvlen
 
         if arch == "armv8":
-            if "int8_int32" in dtype: stepNR = 4
-
+            if "int8_int32" in dtype: 
+                stepNR = 4
+                stepMR = 8
             for mr in range(stepMR, maxMR, stepMR):
                 for nr in range(stepNR, maxNR, stepNR):
                     if dtype == "int8_int32":

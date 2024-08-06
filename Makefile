@@ -106,20 +106,23 @@ endif
 OBJ_FILES = $(OBJDIR)/model_level.o $(OBJDIR)/ukernels.o \
 	$(OBJDIR)/convDirect.o $(OBJDIR)/im2col.o $(OBJDIR)/im2row.o $(OBJDIR)/inutils.o $(OBJDIR)/sutils.o 
 
-ifeq ($(arch), armv8)
-    SRC_ASM_FILES = $(wildcard ./src/asm_generator/ukernels/*.S)
-    OBJ_ASM_FILES = $(patsubst ./src/asm_generator/ukernels/%.S, $(OBJDIR)/%.o, $(SRC_ASM_FILES))
-    OBJ_FILES += $(OBJ_ASM_FILES)
-else
-    OBJ_FILES += $(OBJDIR)/uKernels_intrinsic_fp32.o
-endif
+#ifeq ($(arch), armv8)
+#    SRC_ASM_FILES = $(wildcard ./src/asm_generator/ukernels/*.S)
+#    OBJ_ASM_FILES = $(patsubst ./src/asm_generator/ukernels/%.S, $(OBJDIR)/%.o, $(SRC_ASM_FILES))
+#    OBJ_FILES += $(OBJ_ASM_FILES)
 
-ifeq ($(arch), armv8)
-    ifneq ($(PROCESSOR), A57) #Jetson Nano without support for fp16 saxpy dot products
-        OBJ_FILES += $(OBJDIR)/uKernels_intrinsic_fp16.o
-    endif
-endif
+#    OBJ_FILES += $(OBJDIR)/selector_ukernel.o
+#    OBJ_FILES += $(OBJDIR)/gemm_ukernel.o
+#else
+#endif
+
+#ifeq ($(arch), armv8)
+#    ifneq ($(PROCESSOR), A57) #Jetson Nano without support for fp16 saxpy dot products
+#        OBJ_FILES += $(OBJDIR)/uKernels_intrinsic_fp16.o
+#    endif
+#endif
     
+OBJ_FILES += $(OBJDIR)/uKernels_intrinsic_fp32.o
 OBJ_FILES += $(OBJDIR)/uKernels_intrinsic_int32.o
 OBJ_FILES += $(OBJDIR)/uKernels_intrinsic_int8_int32.o
 

@@ -172,13 +172,8 @@ int main(int argc, char *argv[]) {
   else                                     gemm = UNKNOWN;
 
   #if defined(NQ_FP32) || defined(FQ_FP32)
-    #ifdef ARMV8
-      UK_TYPE      *uk_vec      = new_uk_asm_selector_fp32();
-      UK_EDGE_TYPE *uk_edge_vec = new_uk_asm_edge_selector_fp32();
-    #else
-      UK_TYPE      *uk_vec      = new_uk_intrinsic_selector_fp32();
-      UK_EDGE_TYPE *uk_edge_vec = NULL;
-    #endif 
+    UK_TYPE      *uk_vec      = new_uk_intrinsic_selector_fp32();
+    UK_EDGE_TYPE *uk_edge_vec = NULL;
   #elif defined(NQ_INT32) || defined(FQ_INT32)
     UK_TYPE      *uk_vec      = new_uk_intrinsic_selector_int32();
     UK_EDGE_TYPE *uk_edge_vec = NULL;

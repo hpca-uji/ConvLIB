@@ -6,12 +6,12 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#if defined(ARMV8)
+  #include <arm_neon.h>
+#endif
+
 #if defined(NQ_FP32) || defined(FQ_FP32)
-  #if defined(ARMV8)
-    #include "asm_generator/ukernels/gemm_ukernel_headers.h"
-  #else 
-    #include "intrinsic_generator/ukernels/uKernels_intrinsic_fp32.h"
-  #endif
+  #include "intrinsic_generator/ukernels/uKernels_intrinsic_fp32.h"
 #elif FP16
   #include "intrinsic_generator/ukernels/uKernels_intrinsic_fp16.h"
 #else
@@ -38,26 +38,16 @@
   #define AB_TYPE        float
   #define AB_PACK_TYPE   float
   #define C_TYPE         float
-  #ifdef ARMV8
-    #define UK_TYPE        uk_asm_fp32
-    #define UK_EDGE_TYPE   uk_asm_edge_fp32
-  #else
-    #define UK_TYPE        uk_intrinsic_fp32
-    #define UK_EDGE_TYPE   uk_intrinsic_fp32
-  #endif
-  #define UK_CONFIG        uk_config_fp32_t
+  #define UK_TYPE        uk_intrinsic_fp32
+  #define UK_EDGE_TYPE   uk_intrinsic_fp32
+  #define UK_CONFIG      uk_config_fp32_t
 #elif FQ_FP32
   #define AB_TYPE        int8_t
   #define AB_PACK_TYPE   float
   #define C_TYPE         float
-  #ifdef ARMV8
-    #define UK_TYPE        uk_asm_fp32
-    #define UK_EDGE_TYPE   uk_asm_edge_fp32
-  #else
-    #define UK_TYPE        uk_intrinsic_fp32
-    #define UK_EDGE_TYPE   uk_intrinsic_fp32
-  #endif
-  #define UK_CONFIG        uk_config_fp32_t
+  #define UK_TYPE        uk_intrinsic_fp32
+  #define UK_EDGE_TYPE   uk_intrinsic_fp32
+  #define UK_CONFIG      uk_config_fp32_t
 #elif NQ_INT32
   #define AB_TYPE        int32_t
   #define AB_PACK_TYPE   int32_t
@@ -99,13 +89,15 @@ void sdot_microkernel(int mr, int nr, int MR, int NR, AB_PACK_TYPE *A, AB_PACK_T
 		         C_TYPE *C, uint32_t kc, uint32_t ldC, C_TYPE alpha, C_TYPE beta, 
 			 C_TYPE *aux, UK_TYPE uk, UK_EDGE_TYPE uk_edge);
 
-//Special micro-kernels headers
-void uk_intrinsic_quantize_int8_4x4_sdot(int kc, int8_t  *Ar, int8_t *Br, int32_t *Cr, int32_t beta, int ldC);
-void uk_intrinsic_quantize_int8_4x16_sdot(int kc, int8_t  *Ar, int8_t *Br, int32_t *Cr, int32_t beta, int ldC);
-void uk_intrinsic_quantize_int8_6x16_sdot(int kc, int8_t  *Ar, int8_t *Br, int32_t *Cr, int32_t beta, int ldC);
+//Special micro-kernels headers 
+//SDOT based micro-kernels for A78AE 
 
-#ifdef A78AE
-  void ukernel_intrinsic_16x8_A78_fp16(int kc, float16_t *Ar, float16_t *Br, float16_t *Cr, float16_t beta, int Clda);
-#endif
+void uk_intrinsic_quantize_int8_4x4_sdot (int mr, int nr, int kc, int8_t  *Ar, int8_t *Br, int32_t *Cor, int32_t betaI, int Clda);
+void uk_intrinsic_quantize_int8_4x16_sdot(int mr, int nr, int kc, int8_t  *Ar, int8_t *Br, int32_t *Cor, int32_t betaI, int Clda);
+void uk_intrinsic_quantize_int8_6x16_sdot(int mr, int nr, int kc, int8_t  *Ar, int8_t *Br, int32_t *Cor, int32_t betaI, int Clda);
+
+//#ifdef A78AE
+  //void ukernel_intrinsic_16x8_A78_fp16(int kc, float16_t *Ar, float16_t *Br, float16_t *Cr, float16_t beta, int Clda);
+//#endif
 
 #endif

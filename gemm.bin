@@ -70,7 +70,12 @@ if [ "$GEMM" = "BLIS" ]; then
   BESTOF=F
 fi
 
-
+if [ "$GEMM" = "SDOT_GEMM" ] ; then
+  echo " WARNING: With SDOT gemm, BESTOF option is disabled automaticaly and only is avaiable the micro-kernel 4x16."
+  BESTOF=F
+  MR=4
+  NR=16
+fi
 sys_arch=$(uname -p)
 
 taskset -c $cpus ./build/gemm_driver.x "cnn" $CONFIGFILE $TMIN $TEST $DEBUG $OUTCSV $MR $NR $THREADS GEMM $GEMM $BESTOF "cache-arch/"$PLATFORM $MC $NC $KC $PARALLEL_LOOP

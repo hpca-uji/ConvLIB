@@ -90,18 +90,10 @@ void gemm_blis_B3A2C0( char orderA, char orderB, char orderC,
               mr = min(mc-ir, MR); 
               Cptr = &Ccol(ic+ir,jc+jr);
 	     
-              #if defined(ARMV8) && (defined(NQ_FP32) || defined(FQ_FP32))
-                if (mr == MR && nr == NR)
-                  uk(kc, &alpha, &Ac[ir*kc], &Bc[jr*kc], &betaI, Cptr, ldC * sizeof(float));
-                else
-                  uk_edge(mr, nr, MR, NR, kc, &alpha, &Ac[ir*kc], &Bc[jr*kc], &betaI, aux, Cptr, ldC);
-              #else
-                uk(mr, nr, kc, &Ac[ir*kc], &Bc[jr*kc], Cptr, betaI, ldC); 
-              #endif
+	      uk(mr, nr, kc, &Ac[ir*kc], &Bc[jr*kc], Cptr, betaI, ldC); 
 
 	      //gemm_base_Cresident(orderC, mr, nr, kc, alpha, &Acptr[ir*kc], MR, &Bc[jr*kc], NR,
                                   //betaI, Cptr, ldC );
-
 
             }
           }
@@ -156,14 +148,7 @@ void gemm_blis_B3A2C0( char orderA, char orderB, char orderC,
               mr = min(mc-ir, MR);
               Cptr = &Ccol(ic+ir,jc+jr);
               
-	      #if defined(ARMV8) && (defined(NQ_FP32) || defined(FQ_FP32))
-                if (mr == MR && nr == NR)
-                  uk(kc, &alpha, &Ac[ir*kc], &Bc[jr*kc], &betaI, Cptr, ldC * sizeof(float));
-                else
-                  uk_edge(mr, nr, MR, NR, kc, &alpha, &Ac[ir*kc], &Bc[jr*kc], &betaI, aux, Cptr, ldC);
-              #else
-                uk(mr, nr, kc, &Ac[ir*kc], &Bc[jr*kc], Cptr, betaI, ldC); 
-              #endif
+              uk(mr, nr, kc, &Ac[ir*kc], &Bc[jr*kc], Cptr, betaI, ldC); 
 
 	    }
           }
@@ -208,14 +193,7 @@ void gemm_blis_B3A2C0( char orderA, char orderB, char orderC,
               mr = min(mc-ir, MR); 
               Cptr = &Ccol(ic+ir,jc+jr);
 
-	      #if defined(ARMV8) && (defined(NQ_FP32) || defined(FQ_FP32))
-                if (mr == MR && nr == NR)
-                  uk(kc, &alpha, &Ac[ir*kc], &Bc[jr*kc], &betaI, Cptr, ldC * sizeof(float));
-                else
-                  uk_edge(mr, nr, MR, NR, kc, &alpha, &Ac[ir*kc], &Bc[jr*kc], &betaI, aux, Cptr, ldC);
-              #else
-                uk(mr, nr, kc, &Ac[ir*kc], &Bc[jr*kc], Cptr, betaI, ldC); 
-              #endif
+              uk(mr, nr, kc, &Ac[ir*kc], &Bc[jr*kc], Cptr, betaI, ldC); 
 
             }
           }
@@ -261,14 +239,7 @@ void gemm_blis_B3A2C0( char orderA, char orderB, char orderC,
               mr = min(mc-ir, MR); 
               Cptr = &Ccol(ic+ir,jc+jr);
 
-	      #if defined(ARMV8) && (defined(NQ_FP32) || defined(FQ_FP32))
-                if (mr == MR && nr == NR)
-                  uk(kc, &alpha, &Ac[ir*kc], &Bc[jr*kc], &betaI, Cptr, ldC * sizeof(float));
-                else
-                  uk_edge(mr, nr, MR, NR, kc, &alpha, &Ac[ir*kc], &Bc[jr*kc], &betaI, aux, Cptr, ldC);
-              #else
-                uk(mr, nr, kc, &Ac[ir*kc], &Bc[jr*kc], Cptr, betaI, ldC); 
-              #endif
+              uk(mr, nr, kc, &Ac[ir*kc], &Bc[jr*kc], Cptr, betaI, ldC); 
 
             }
           }
@@ -341,14 +312,7 @@ void gemm_blis_A3B2C0( char orderA, char orderB, char orderC,
               nr = min(nc-jr, NR);
               Cptr = &Ccol(ic+ir,jc+jr);
 	      
-	      #if defined(ARMV8) && (defined(NQ_FP32) || defined(FQ_FP32))
-                if (mr == MR && nr == NR)
-                  uk(kc, &alpha, &Ac[ir*kc], &Bc[jr*kc], &betaI, Cptr, ldC * sizeof(float));
-                else
-                  uk_edge(mr, nr, MR, NR, kc, &alpha, &Ac[ir*kc], &Bc[jr*kc], &betaI, aux, Cptr, ldC);
-              #else
-                uk(mr, nr, kc, &Ac[ir*kc], &Bc[jr*kc], Cptr, betaI, ldC); 
-              #endif
+              uk(mr, nr, kc, &Ac[ir*kc], &Bc[jr*kc], Cptr, betaI, ldC); 
 
 	    }
           }
@@ -400,14 +364,7 @@ void gemm_blis_A3B2C0( char orderA, char orderB, char orderC,
               nr = min(nc-jr, NR);
               Cptr = &Ccol(ic+ir,jc+jr);
 
-	      #if defined(ARMV8) && (defined(NQ_FP32) || defined(FQ_FP32))
-                if (mr == MR && nr == NR)
-                  uk(kc, &alpha, &Ac[ir*kc], &Bc[jr*kc], &betaI, Cptr, ldC * sizeof(float));
-                else
-                  uk_edge(mr, nr, MR, NR, kc, &alpha, &Ac[ir*kc], &Bc[jr*kc], &betaI, aux, Cptr, ldC);
-              #else
-                uk(mr, nr, kc, &Ac[ir*kc], &Bc[jr*kc], Cptr, betaI, ldC); 
-              #endif
+              uk(mr, nr, kc, &Ac[ir*kc], &Bc[jr*kc], Cptr, betaI, ldC); 
 
             }
           }
@@ -452,14 +409,7 @@ void gemm_blis_A3B2C0( char orderA, char orderB, char orderC,
               nr = min(nc-jr, NR);
               Cptr = &Ccol(ic+ir,jc+jr);
 
-	      #if defined(ARMV8) && (defined(NQ_FP32) || defined(FQ_FP32))
-                if (mr == MR && nr == NR)
-                  uk(kc, &alpha, &Ac[ir*kc], &Bc[jr*kc], &betaI, Cptr, ldC * sizeof(float));
-                else
-                  uk_edge(mr, nr, MR, NR, kc, &alpha, &Ac[ir*kc], &Bc[jr*kc], &betaI, aux, Cptr, ldC);
-              #else
-                uk(mr, nr, kc, &Ac[ir*kc], &Bc[jr*kc], Cptr, betaI, ldC); 
-              #endif
+              uk(mr, nr, kc, &Ac[ir*kc], &Bc[jr*kc], Cptr, betaI, ldC); 
 
             }
           }
@@ -504,14 +454,7 @@ void gemm_blis_A3B2C0( char orderA, char orderB, char orderC,
               nr = min(nc-jr, NR);
               Cptr = &Ccol(ic+ir,jc+jr);
 
-	      #if defined(ARMV8) && (defined(NQ_FP32) || defined(FQ_FP32))
-                if (mr == MR && nr == NR)
-                  uk(kc, &alpha, &Ac[ir*kc], &Bc[jr*kc], &betaI, Cptr, ldC * sizeof(float));
-                else
-                  uk_edge(mr, nr, MR, NR, kc, &alpha, &Ac[ir*kc], &Bc[jr*kc], &betaI, aux, Cptr, ldC);
-              #else
-                uk(mr, nr, kc, &Ac[ir*kc], &Bc[jr*kc], Cptr, betaI, ldC); 
-              #endif
+              uk(mr, nr, kc, &Ac[ir*kc], &Bc[jr*kc], Cptr, betaI, ldC); 
 
             }
           }

@@ -5,111 +5,13 @@
 #define Crref(i,j)   Cr[j*Clda+i]
 
 
-//-------------------------------------------------------------------------------------------------
-//-------------------------------------------------------------------------------------------------
-//                 TODO: REMOVE THIS SECTION. ONLY FOR DEBUG!!
-//=================================================================================================
-void opt_ukernel_intrinsic_16x8_fp32(int kc, float  *Ar, float *Br, float *Cr, float beta, int Clda){
-  int pr, bA = 0, bB = 0;
-  int vlength = 8;
-  vfloat32m1_t vtmp;
-  vfloat32m1_t  A0,  A1,  B0,  B1,  B2,  B3,  B4,  B5,  B6,  B7;
-  vfloat32m1_t  C00,  C01,  C02,  C03,  C04,  C05,  C06,  C07,  C10,  C11,  C12,  C13,  C14,  C15,  C16,  C17;
-
-  if (beta == 0) {
-    C00 = __riscv_vfmv_v_f_f32m1(0, vlength);
-    C01 = __riscv_vfmv_v_f_f32m1(0, vlength);
-    C02 = __riscv_vfmv_v_f_f32m1(0, vlength);
-    C03 = __riscv_vfmv_v_f_f32m1(0, vlength);
-    C04 = __riscv_vfmv_v_f_f32m1(0, vlength);
-    C05 = __riscv_vfmv_v_f_f32m1(0, vlength);
-    C06 = __riscv_vfmv_v_f_f32m1(0, vlength);
-    C07 = __riscv_vfmv_v_f_f32m1(0, vlength);
-    C10 = __riscv_vfmv_v_f_f32m1(0, vlength);
-    C11 = __riscv_vfmv_v_f_f32m1(0, vlength);
-    C12 = __riscv_vfmv_v_f_f32m1(0, vlength);
-    C13 = __riscv_vfmv_v_f_f32m1(0, vlength);
-    C14 = __riscv_vfmv_v_f_f32m1(0, vlength);
-    C15 = __riscv_vfmv_v_f_f32m1(0, vlength);
-    C16 = __riscv_vfmv_v_f_f32m1(0, vlength);
-    C17 = __riscv_vfmv_v_f_f32m1(0, vlength);
-  } else {
-    C00 = __riscv_vle32_v_f32m1(&Crref(0, 0), vlength);
-    C01 = __riscv_vle32_v_f32m1(&Crref(0, 1), vlength);
-    C02 = __riscv_vle32_v_f32m1(&Crref(0, 2), vlength);
-    C03 = __riscv_vle32_v_f32m1(&Crref(0, 3), vlength);
-    C04 = __riscv_vle32_v_f32m1(&Crref(0, 4), vlength);
-    C05 = __riscv_vle32_v_f32m1(&Crref(0, 5), vlength);
-    C06 = __riscv_vle32_v_f32m1(&Crref(0, 6), vlength);
-    C07 = __riscv_vle32_v_f32m1(&Crref(0, 7), vlength);
-    C10 = __riscv_vle32_v_f32m1(&Crref(8, 0), vlength);
-    C11 = __riscv_vle32_v_f32m1(&Crref(8, 1), vlength);
-    C12 = __riscv_vle32_v_f32m1(&Crref(8, 2), vlength);
-    C13 = __riscv_vle32_v_f32m1(&Crref(8, 3), vlength);
-    C14 = __riscv_vle32_v_f32m1(&Crref(8, 4), vlength);
-    C15 = __riscv_vle32_v_f32m1(&Crref(8, 5), vlength);
-    C16 = __riscv_vle32_v_f32m1(&Crref(8, 6), vlength);
-    C17 = __riscv_vle32_v_f32m1(&Crref(8, 7), vlength);
-  }
-
-  for (pr=0; pr<kc; pr++) { // Loop L6
-    A0 = __riscv_vle32_v_f32m1(&Ar[bA + 0], vlength);
-    A1 = __riscv_vle32_v_f32m1(&Ar[bA + 8], vlength);
-
-    C00 = __riscv_vfmacc_vf_f32m1(C00, Br[bB + 0], A0, vlength);
-    C01 = __riscv_vfmacc_vf_f32m1(C01, Br[bB + 1], A0, vlength); 
-    C02 = __riscv_vfmacc_vf_f32m1(C02, Br[bB + 2], A0, vlength); 
-    C03 = __riscv_vfmacc_vf_f32m1(C03, Br[bB + 3], A0, vlength); 
-    C04 = __riscv_vfmacc_vf_f32m1(C04, Br[bB + 4], A0, vlength); 
-    C05 = __riscv_vfmacc_vf_f32m1(C05, Br[bB + 5], A0, vlength); 
-    C06 = __riscv_vfmacc_vf_f32m1(C06, Br[bB + 6], A0, vlength); 
-    C07 = __riscv_vfmacc_vf_f32m1(C07, Br[bB + 7], A0, vlength); 
-    C10 = __riscv_vfmacc_vf_f32m1(C10, Br[bB + 0], A1, vlength); 
-    C11 = __riscv_vfmacc_vf_f32m1(C11, Br[bB + 1], A1, vlength); 
-    C12 = __riscv_vfmacc_vf_f32m1(C12, Br[bB + 2], A1, vlength); 
-    C13 = __riscv_vfmacc_vf_f32m1(C13, Br[bB + 3], A1, vlength); 
-    C14 = __riscv_vfmacc_vf_f32m1(C14, Br[bB + 4], A1, vlength); 
-    C15 = __riscv_vfmacc_vf_f32m1(C15, Br[bB + 5], A1, vlength); 
-    C16 = __riscv_vfmacc_vf_f32m1(C16, Br[bB + 6], A1, vlength); 
-    C17 = __riscv_vfmacc_vf_f32m1(C17, Br[bB + 7], A1, vlength); 
-    
-    bA+=16;
-    bB+=8;
-  }
-
-  __riscv_vse32_v_f32m1(&Crref(0,0), C00, vlength); 
-  __riscv_vse32_v_f32m1(&Crref(0,1), C01, vlength); 
-  __riscv_vse32_v_f32m1(&Crref(0,2), C02, vlength); 
-  __riscv_vse32_v_f32m1(&Crref(0,3), C03, vlength); 
-  __riscv_vse32_v_f32m1(&Crref(0,4), C04, vlength); 
-  __riscv_vse32_v_f32m1(&Crref(0,5), C05, vlength); 
-  __riscv_vse32_v_f32m1(&Crref(0,6), C06, vlength); 
-  __riscv_vse32_v_f32m1(&Crref(0,7), C07, vlength); 
-  __riscv_vse32_v_f32m1(&Crref(8,0), C10, vlength); 
-  __riscv_vse32_v_f32m1(&Crref(8,1), C11, vlength); 
-  __riscv_vse32_v_f32m1(&Crref(8,2), C12, vlength); 
-  __riscv_vse32_v_f32m1(&Crref(8,3), C13, vlength); 
-  __riscv_vse32_v_f32m1(&Crref(8,4), C14, vlength); 
-  __riscv_vse32_v_f32m1(&Crref(8,5), C15, vlength); 
-  __riscv_vse32_v_f32m1(&Crref(8,6), C16, vlength); 
-  __riscv_vse32_v_f32m1(&Crref(8,7), C17, vlength); 
-}
-
-//=================================================================================================
-//=================================================================================================
-//=================================================================================================
 
 //Micro-kernels selector
 void fselector(int MR, int NR, int algorithm, int gemm, UK_TYPE *uk_vec, UK_EDGE_TYPE *uk_edge_vec, UK_TYPE *uk, UK_EDGE_TYPE *uk_edge) {
 
   #if defined(NQ_FP32) || defined(FQ_FP32)
-    #ifdef RISCV
-      uk_intrinsic_selector_fp32(MR, NR, uk_vec, uk);
-      *uk_edge = *uk;
-    #else
-      uk_asm_selector_fp32(MR, NR, uk_vec, uk);
-      uk_asm_edge_selector_fp32(MR, NR, uk_edge_vec, uk_edge);
-    #endif
+    uk_intrinsic_selector_fp32(MR, NR, uk_vec, uk);
+    *uk_edge = *uk;
   #elif defined(NQ_INT32) || defined(FQ_INT32)
     uk_intrinsic_selector_int32(MR, NR, uk_vec, uk);
     *uk_edge = *uk;
@@ -137,23 +39,7 @@ void generic_microkernel(int mr, int nr, int MR, int NR, AB_PACK_TYPE *A, AB_PAC
 		         C_TYPE *C, uint32_t kc, uint32_t ldC, C_TYPE alpha, C_TYPE beta, 
 			 C_TYPE *aux, UK_TYPE uk, UK_EDGE_TYPE uk_edge) {
 
-  #if defined(ARMV8) && (defined(NQ_FP32) || defined(FQ_FP32))
-    if (mr == MR && nr == NR)
-      uk(kc, &alpha, A, B, &beta, C, ldC * sizeof(float));
-    else
-      uk_edge(mr, nr, MR, NR, kc, &alpha, A, B, &beta, aux, C, ldC);
-  #else
-    //if ((mr == MR) && (nr == NR))
     uk(mr, nr, kc, A, B, C, beta, ldC); 
-    //else
-      //uk(mr, nr, kc, A, B, C, 0, ldC); 
-    
-      //uk_edge(kc, A, B, aux, 0, MR);
-      //for (int j = 0; j < nr; j++)
-      //for (int i = 0; i < mr; i++)
-      //C[j*ldC + i] = (beta) * C[j*ldC + i] + aux[j * MR + i];
-     //}
-  #endif
 
 }
 
@@ -170,13 +56,13 @@ void sdot_microkernel(int mr, int nr, int MR, int NR, AB_PACK_TYPE *A, AB_PACK_T
 			 C_TYPE *aux, UK_TYPE uk, UK_EDGE_TYPE uk_edge) {
   //WARNING: C stored by rows!
   #if defined(Q_INT8_INT32)
-    if (mr == MR && nr == NR)
-      uk(kc, A, B, C, beta, ldC);
-    else {
+    if (mr == MR && nr == NR) {
+      uk(mr, nr, kc, A, B, C, beta, ldC); 
+    } else {
       if (mr <= 4 && nr <= 4)
-        uk_intrinsic_quantize_int8_4x4_sdot(kc, A, B, aux, 0, NR); //NR Because C is stored by rows
+        uk_intrinsic_quantize_int8_4x4_sdot(mr, nr, kc, A, B, aux, 0, NR); //NR Because C is stored by rows
       else
-        uk_edge(kc, A, B, aux, 0, NR); //NR Because C is stored by rows
+        uk_edge(mr, nr, kc, A, B, aux, 0, NR); //NR Because C is stored by rows
 
       for (int i = 0; i < mr; i++)
       for (int j = 0; j < nr; j++)
@@ -189,7 +75,7 @@ void sdot_microkernel(int mr, int nr, int MR, int NR, AB_PACK_TYPE *A, AB_PACK_T
 
 }
 
-void uk_intrinsic_quantize_int8_4x16_sdot(int kc, int8_t  *Ar, int8_t *Br, int32_t *Cr, int32_t beta, int ldC) { 
+void uk_intrinsic_quantize_int8_4x16_sdot (int mr, int nr, int kc, int8_t  *Ar, int8_t *Br, int32_t *Cr, int32_t beta, int ldC) {
 
   int KR = 16;
 
@@ -199,7 +85,6 @@ void uk_intrinsic_quantize_int8_4x16_sdot(int kc, int8_t  *Ar, int8_t *Br, int32
 	    C10, C11, C12, C13,
 	    C20, C21, C22, C23,
 	    C30, C31, C32, C33;
-
 
   if (beta == 0) {
     C00 = vdupq_n_s32(0);
@@ -389,7 +274,7 @@ void uk_intrinsic_quantize_int8_4x16_sdot(int kc, int8_t  *Ar, int8_t *Br, int32
 
 }
 
-void uk_intrinsic_quantize_int8_4x4_sdot(int kc, int8_t  *Ar, int8_t *Br, int32_t *Cr, int32_t beta, int ldC) { 
+void uk_intrinsic_quantize_int8_4x4_sdot (int mr, int nr, int kc, int8_t  *Ar, int8_t *Br, int32_t *Cr, int32_t beta, int ldC) {
 
   int KR = 16;
 
