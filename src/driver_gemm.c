@@ -47,8 +47,6 @@
 #include "modelLevel/model_level.h"
 #include "gemm/gemm_blis.h"
 
-#include "asm_generator/ukernels/gemm_ukernel_headers.h"
-
 #undef min
 
 #include "convGemm/convgemm_blis.h"
@@ -239,7 +237,7 @@ int main(int argc, char *argv[]) {
          ldY1,  ldY2,  ldY3,
          visual, nreps, ho, wo, homax, womax;
   
-  int ib, i, i2, ii, Ci_Cib, Co_Cob, Co_Nr, Co_Mr;
+  int ib, i, i2, ii, ukn, Ci_Cib, Co_Cob, Co_Nr, Co_Mr;
   char *filename;
   FILE *fd;
   int cnn_test_num, cnn_i;
@@ -272,6 +270,8 @@ int main(int argc, char *argv[]) {
 
   int gemm;
   int format;
+
+  int uk_num;
 
   fprintf(testConf->fd_csv, "Format;l;MC;NC;KC;M;N;K;n;k;c;ho;wo;kh;kw;Time;GFLOPS;Error;MR;NR;");    
 
@@ -307,18 +307,27 @@ int main(int argc, char *argv[]) {
   else                                     gemm = UNKNOWN;
   
   #if defined(NQ_FP32) || defined(FQ_FP32)
-    UK_TYPE      *uk_vec      = new_uk_asm_selector_fp32();
-    UK_EDGE_TYPE *uk_edge_vec = new_uk_asm_edge_selector_fp32();
+    #ifdef ARMV8
+      UK_TYPE      *uk_vec      = new_uk_asm_selector_fp32();
+      UK_EDGE_TYPE *uk_edge_vec = new_uk_asm_edge_selector_fp32();
+    #else
+      UK_TYPE      *uk_vec      = new_uk_intrinsic_selector_fp32();
+      UK_EDGE_TYPE *uk_edge_vec = NULL;
+    #endif 
+      UK_CONFIG    *uk_config   = new_uk_intrinsic_config_fp32();
   #elif defined(NQ_INT32) || defined(FQ_INT32)
     UK_TYPE      *uk_vec      = new_uk_intrinsic_selector_int32();
     UK_EDGE_TYPE *uk_edge_vec = NULL;
+    UK_CONFIG    *uk_config   = new_uk_intrinsic_config_int32();
   #elif FP16
     UK_TYPE      *uk_vec      = new_uk_intrinsic_selector_fp16();
     UK_EDGE_TYPE *uk_edge_vec = NULL;
+    UK_CONFIG    *uk_config   = new_uk_intrinsic_config_fp16();
   #elif Q_INT8_INT32
     UK_TYPE      *uk_vec      = new_uk_intrinsic_selector_int8_int32();
     //UK_TYPE      *uk_vec      = new_uk_intrinsic_selector_int8_int32_u8();
     UK_EDGE_TYPE *uk_edge_vec = NULL;
+    UK_CONFIG    *uk_config   = new_uk_intrinsic_config_int8_int32();
   #else
     printf("ERROR: Type unsupported\n");
     exit(-1);
@@ -449,51 +458,34 @@ int main(int argc, char *argv[]) {
         ldB = kk;
         ldC = mm;
       }
+
       //-------------------------------------------------
       //Iterate over MR-NR
       //-------------------------------------------------
-      mr_limit = testConf->MR;
-      nr_limit = testConf->NR;
-      mr_init  = testConf->MR;
-      nr_init  = testConf->NR;
   
-      if (testConf->bestof=='T') {
-        #if defined(NQ_FP32) || defined(FQ_FP32)
-          mr_limit = 20;
-          nr_limit = 20;
-          mr_init  = 4;
-          nr_init  = 4;
-        #elif FP16
-          mr_limit = 40;
-          nr_limit = 40;
-          mr_init  = 8;
-          nr_init  = 8;
-        #else
-          mr_limit = 24;
-          nr_limit = 24;
-          mr_init  = 8;
-          nr_init  = 4;
-        #endif
-      }
-
+      if (testConf->bestof=='T') uk_num = uk_config->uk_num;
+      else                       uk_num = 1;
+      
       if (gemm == SDOT_GEMM) {
-        mr_limit = 4;
-        nr_limit = 16;
-        mr_init  = 4;
-        nr_init  = 16;
+        testConf->MR = 4;
+        testConf->NR = 16;
       }
   
       best_error=0.0; best_flops=0.0; best_time = 0.0;
-  
-      for (mr_iter=mr_init; mr_iter < mr_limit + 1; mr_iter+=mr_init) {
-        for (nr_iter=nr_init; nr_iter < nr_limit + 1; nr_iter+=nr_init) {
-  
-          MR = mr_iter;
-          NR = nr_iter;
-  
-	  fselector(MR, NR, LOWERING, gemm, uk_vec, uk_edge_vec, &uk, &uk_edge);
+ 
+      for (ukn = 0; ukn < uk_num; ukn++) {
+
+      	if (testConf->bestof=='T') {    
+          MR = uk_config->mr_pool[ukn];
+          NR = uk_config->nr_pool[ukn];
+	} else {
+          MR = testConf->MR;
+          NR = testConf->NR;
+	}
+
+	fselector(MR, NR, LOWERING, gemm, uk_vec, uk_edge_vec, &uk, &uk_edge);
     
-	  if (uk == NULL) { continue; }
+	if (uk == NULL) { continue; }
 	  
           if (model_on) {
 	    if (gemm==A3B2C0)
@@ -667,8 +659,6 @@ int main(int argc, char *argv[]) {
           free(Cg);
       
         }
-      }
-
 
 
       if (testConf->bestof=='T') {

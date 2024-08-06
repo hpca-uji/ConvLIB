@@ -18,7 +18,11 @@ else ifeq ($(PROCESSOR), CARMEL)
   arch=armv8
 else ifeq ($(PROCESSOR), C906)
   arch=riscv
+else ifeq ($(PROCESSOR), C908)
+  arch=riscv
 else ifeq ($(PROCESSOR), C910)
+  arch=riscv
+else ifeq ($(PROCESSOR), K1)
   arch=riscv
 else
   $(error Processor unsuported. Please, select a correct option in Makefile.inc.)
@@ -44,10 +48,16 @@ endif
 
 
 ifeq ($(arch), riscv)
-    CC       = riscv64-unknown-linux-gnu-gcc
-    CLINKER  = riscv64-unknown-linux-gnu-gcc
-    #OPTFLAGS   +=  -O3 -fopenmp -march=rv64imafdcv0p7_zfh_xtheadc -mabi=lp64d -mtune=c910
-    OPTFLAGS = -O0 -g3 -march=rv64gcv0p7_zfh_xtheadc -mabi=lp64d -mtune=c906 -static -DRISCV $(FLAGS)
+    CC       = gcc
+    CLINKER  = gcc
+    ifeq ($(PROCESSOR), C910)
+    	OPTFLAGS =  -O2 -march=rv64imafdcv0p7_zfh_xtheadc -mabi=lp64d -mtune=c910 -static -DRISCV
+    else ifeq ($(PROCESSOR), C906)
+    	OPTFLAGS = -O2 -g3 -march=rv64gcv0p7_zfh_xtheadc -mabi=lp64d -mtune=c906 -static -DRISCV
+    else
+	OPTFLAGS = -O2 -march=rv64gcv_zfh -DRISCV #-march=rv64imafdcv -static 
+    endif
+    OPTFLAGS += $(FLAGS)
 else ifeq ($(arch), armv8)
     CC       = gcc
     CLINKER  = gcc
@@ -93,21 +103,25 @@ endif
 
 #------------------------------------------
 
-OBJ_FILES = $(OBJDIR)/model_level.o $(OBJDIR)/selector_ukernel.o $(OBJDIR)/gemm_ukernel.o $(OBJDIR)/ukernels.o \
+OBJ_FILES = $(OBJDIR)/model_level.o $(OBJDIR)/ukernels.o \
 	$(OBJDIR)/convDirect.o $(OBJDIR)/im2col.o $(OBJDIR)/im2row.o $(OBJDIR)/inutils.o $(OBJDIR)/sutils.o 
 
-SRC_ASM_FILES = $(wildcard ./src/asm_generator/ukernels/*.S)
-OBJ_ASM_FILES = $(patsubst ./src/asm_generator/ukernels/%.S, $(OBJDIR)/%.o, $(SRC_ASM_FILES))
-OBJ_FILES += $(OBJ_ASM_FILES)
+ifeq ($(arch), armv8)
+    SRC_ASM_FILES = $(wildcard ./src/asm_generator/ukernels/*.S)
+    OBJ_ASM_FILES = $(patsubst ./src/asm_generator/ukernels/%.S, $(OBJDIR)/%.o, $(SRC_ASM_FILES))
+    OBJ_FILES += $(OBJ_ASM_FILES)
+else
+    OBJ_FILES += $(OBJDIR)/uKernels_intrinsic_fp32.o
+endif
 
 ifeq ($(arch), armv8)
     ifneq ($(PROCESSOR), A57) #Jetson Nano without support for fp16 saxpy dot products
         OBJ_FILES += $(OBJDIR)/uKernels_intrinsic_fp16.o
     endif
-    OBJ_FILES += $(OBJDIR)/uKernels_intrinsic_fp32.o
-    OBJ_FILES += $(OBJDIR)/uKernels_intrinsic_int32.o
-    OBJ_FILES += $(OBJDIR)/uKernels_intrinsic_int8_int32.o
 endif
+    
+OBJ_FILES += $(OBJDIR)/uKernels_intrinsic_int32.o
+OBJ_FILES += $(OBJDIR)/uKernels_intrinsic_int8_int32.o
 
 
 SRC_GEMM_FILES = $(wildcard ./src/gemm/*.c)

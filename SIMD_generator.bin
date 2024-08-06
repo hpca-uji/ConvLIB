@@ -1,10 +1,15 @@
 #!/bin/bash
 
-source src/bash/arch.sh
-
 source SIMD_generator.config
 
 CONFIG_PATH=SIMD-arch
+
+#-Set archquitecture
+if  [ "$CPU" == "A57" ] || [ "$CPU" == "A78AE" ] || [ "$CPU" == "CARMEL" ] ; then
+  ARCH="arm"
+else
+  ARCH="riscv"
+fi
 
 #-Set pipelining option for ukernel generator
 _PIPELINING=""
@@ -36,22 +41,29 @@ if [ "$OP" != "NORMAL" ]; then
   _OP="--op_b ${OP,,}"
 fi
 
-if [ ! -f $CONFIG_PATH/$ARCH_CONFIG ]; then
-    echo "ERROR: The Architecture configure doesn't exist. Please, enter a valid filename."
+if [ ! -f $CONFIG_PATH/$CPU ]; then
+    echo "ERROR: The Architecture configure '$CONFIG_PATH/$CPU' doesn't exist. Please, enter a valid filename."
     exit -1
 fi
 
-VLEN=$(tail -1 $CONFIG_PATH/$ARCH_CONFIG | cut -f1)
-MAXVECTOR=$(tail -1 $CONFIG_PATH/$ARCH_CONFIG | cut -f2)
+VLEN=$(tail -1 $CONFIG_PATH/$CPU | cut -f1)
+MAXVECTOR=$(tail -1 $CONFIG_PATH/$CPU | cut -f2)
 
 
 
 #Generating ASM micro-kernels: FP32
 rm src/asm_generator/ukernels/*
 
-if [ "$ARCH" = "$RISCV" ]; then
+if [ "$ARCH" = "riscv" ]; then
   ./src/asm_generator/ukernels_generator.py --arch riscv --data FP32 --vlen ${VLEN} \
 	                                    --maxvec ${MAXVECTOR} ${_OP} ${_REORDER} ${_PIPELINING} ${_UNROLL}
+    
+    #Generating Intrinsic micro-kernels: INT8-INT32 | INT8-INT16 | fp16 | FP32 
+    rm src/intrinsic_generator/ukernels/*
+    cd src/intrinsic_generator/ 
+    ./instrinsics_generator.py --vlen ${VLEN} --arch riscv ${_DUP} --cpu "${CPU}" ${_OP}
+
+    cd ../..
 else
     ./src/asm_generator/ukernels_generator.py --arch armv8 --data FP32 --vlen ${VLEN} \
 	                                      --maxvec ${MAXVECTOR} ${_PIPELINING} ${_UNROLL}
@@ -59,7 +71,7 @@ else
     #Generating Intrinsic micro-kernels: INT8-INT32 | INT8-INT16 | fp16 | FP32 
     rm src/intrinsic_generator/ukernels/*
     cd src/intrinsic_generator/ 
-    ./instrinsics_generator.py --arch armv8 ${_DUP}
+    ./instrinsics_generator.py --vlen ${VLEN} --arch armv8 ${_DUP}
     cd ../..
 fi
 

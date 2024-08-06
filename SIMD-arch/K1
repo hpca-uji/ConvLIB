@@ -1,0 +1,5 @@
+# +---------------------------------+
+# | RISCV BPI-F3 SIMD architecture  |
+# +---------------------------------+
+# VectorLen	MaxRegisters
+256	32

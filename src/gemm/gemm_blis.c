@@ -69,7 +69,6 @@ void gemm_blis_B3A2C0( char orderA, char orderB, char orderC,
   if (TH == 1) {
     for ( jc=0; jc<n; jc+=NC ) {
       nc = min(n-jc, NC); 
-      Acptr = Ac;
       for ( pc=0; pc<k; pc+=KC ) {
         kc = min(k-pc, KC); 
         Bptr = &Bcol(pc,jc);
@@ -83,20 +82,25 @@ void gemm_blis_B3A2C0( char orderA, char orderB, char orderC,
           mc = min(m-ic, MC); 
 
           Aptr = &Acol(ic, pc);
-          pack_RB( orderA, transA, mc, kc, Aptr, ldA, Acptr, MR);
+          pack_RB( orderA, transA, mc, kc, Aptr, ldA, Ac, MR);
           
           for (jr=0; jr<nc; jr+=NR ) {
             nr = min(nc-jr, NR); 
             for (ir=0; ir<mc; ir+=MR ) {
               mr = min(mc-ir, MR); 
               Cptr = &Ccol(ic+ir,jc+jr);
-	      
-	      generic_microkernel(mr, nr, MR, NR, &Acptr[ir*kc], &Bc[jr*kc], 
-                                  Cptr, kc, ldC, alpha, betaI, Ctmp, uk, uk_edge);
+	     
+              #if defined(ARMV8) && (defined(NQ_FP32) || defined(FQ_FP32))
+                if (mr == MR && nr == NR)
+                  uk(kc, &alpha, &Ac[ir*kc], &Bc[jr*kc], &betaI, Cptr, ldC * sizeof(float));
+                else
+                  uk_edge(mr, nr, MR, NR, kc, &alpha, &Ac[ir*kc], &Bc[jr*kc], &betaI, aux, Cptr, ldC);
+              #else
+                uk(mr, nr, kc, &Ac[ir*kc], &Bc[jr*kc], Cptr, betaI, ldC); 
+              #endif
 
-	     //gemm_base_Cresident(orderC, mr, nr, kc, alpha,
-                          //&Acptr[ir*kc], MR, &Bc[jr*kc], NR,
-                          //betaI, Cptr, ldC );
+	      //gemm_base_Cresident(orderC, mr, nr, kc, alpha, &Acptr[ir*kc], MR, &Bc[jr*kc], NR,
+                                  //betaI, Cptr, ldC );
 
 
             }
@@ -151,9 +155,15 @@ void gemm_blis_B3A2C0( char orderA, char orderB, char orderC,
             for ( ir=0; ir<mc; ir+=MR ) {
               mr = min(mc-ir, MR);
               Cptr = &Ccol(ic+ir,jc+jr);
-
-	      generic_microkernel(mr, nr, MR, NR, &Acptr[ir*kc], &Bc[jr*kc], 
-                                  Cptr, kc, ldC, alpha, betaI, &Ctmp[th_id * MR * NR], uk, uk_edge);
+              
+	      #if defined(ARMV8) && (defined(NQ_FP32) || defined(FQ_FP32))
+                if (mr == MR && nr == NR)
+                  uk(kc, &alpha, &Ac[ir*kc], &Bc[jr*kc], &betaI, Cptr, ldC * sizeof(float));
+                else
+                  uk_edge(mr, nr, MR, NR, kc, &alpha, &Ac[ir*kc], &Bc[jr*kc], &betaI, aux, Cptr, ldC);
+              #else
+                uk(mr, nr, kc, &Ac[ir*kc], &Bc[jr*kc], Cptr, betaI, ldC); 
+              #endif
 
 	    }
           }
@@ -198,8 +208,14 @@ void gemm_blis_B3A2C0( char orderA, char orderB, char orderC,
               mr = min(mc-ir, MR); 
               Cptr = &Ccol(ic+ir,jc+jr);
 
-	      generic_microkernel(mr, nr, MR, NR, &Ac[ir*kc], &Bc[jr*kc], 
-                                  Cptr, kc, ldC, alpha, betaI, &Ctmp[th_id * MR * NR], uk, uk_edge);
+	      #if defined(ARMV8) && (defined(NQ_FP32) || defined(FQ_FP32))
+                if (mr == MR && nr == NR)
+                  uk(kc, &alpha, &Ac[ir*kc], &Bc[jr*kc], &betaI, Cptr, ldC * sizeof(float));
+                else
+                  uk_edge(mr, nr, MR, NR, kc, &alpha, &Ac[ir*kc], &Bc[jr*kc], &betaI, aux, Cptr, ldC);
+              #else
+                uk(mr, nr, kc, &Ac[ir*kc], &Bc[jr*kc], Cptr, betaI, ldC); 
+              #endif
 
             }
           }
@@ -245,8 +261,14 @@ void gemm_blis_B3A2C0( char orderA, char orderB, char orderC,
               mr = min(mc-ir, MR); 
               Cptr = &Ccol(ic+ir,jc+jr);
 
-	      generic_microkernel(mr, nr, MR, NR, &Ac[ir*kc], &Bc[jr*kc], 
-                                  Cptr, kc, ldC, alpha, betaI, &Ctmp[th_id * MR * NR], uk, uk_edge);
+	      #if defined(ARMV8) && (defined(NQ_FP32) || defined(FQ_FP32))
+                if (mr == MR && nr == NR)
+                  uk(kc, &alpha, &Ac[ir*kc], &Bc[jr*kc], &betaI, Cptr, ldC * sizeof(float));
+                else
+                  uk_edge(mr, nr, MR, NR, kc, &alpha, &Ac[ir*kc], &Bc[jr*kc], &betaI, aux, Cptr, ldC);
+              #else
+                uk(mr, nr, kc, &Ac[ir*kc], &Bc[jr*kc], Cptr, betaI, ldC); 
+              #endif
 
             }
           }
@@ -319,8 +341,14 @@ void gemm_blis_A3B2C0( char orderA, char orderB, char orderC,
               nr = min(nc-jr, NR);
               Cptr = &Ccol(ic+ir,jc+jr);
 	      
-	      generic_microkernel(mr, nr, MR, NR, &Ac[ir*kc], &Bc[jr*kc], 
-                                  Cptr, kc, ldC, alpha, betaI, Ctmp, uk, uk_edge);
+	      #if defined(ARMV8) && (defined(NQ_FP32) || defined(FQ_FP32))
+                if (mr == MR && nr == NR)
+                  uk(kc, &alpha, &Ac[ir*kc], &Bc[jr*kc], &betaI, Cptr, ldC * sizeof(float));
+                else
+                  uk_edge(mr, nr, MR, NR, kc, &alpha, &Ac[ir*kc], &Bc[jr*kc], &betaI, aux, Cptr, ldC);
+              #else
+                uk(mr, nr, kc, &Ac[ir*kc], &Bc[jr*kc], Cptr, betaI, ldC); 
+              #endif
 
 	    }
           }
@@ -372,8 +400,14 @@ void gemm_blis_A3B2C0( char orderA, char orderB, char orderC,
               nr = min(nc-jr, NR);
               Cptr = &Ccol(ic+ir,jc+jr);
 
-	      generic_microkernel(mr, nr, MR, NR, &Ac[ir*kc], &Bcptr[jr*kc], 
-                                  Cptr, kc, ldC, alpha, betaI, &Ctmp[th_id * MR * NR], uk, uk_edge);
+	      #if defined(ARMV8) && (defined(NQ_FP32) || defined(FQ_FP32))
+                if (mr == MR && nr == NR)
+                  uk(kc, &alpha, &Ac[ir*kc], &Bc[jr*kc], &betaI, Cptr, ldC * sizeof(float));
+                else
+                  uk_edge(mr, nr, MR, NR, kc, &alpha, &Ac[ir*kc], &Bc[jr*kc], &betaI, aux, Cptr, ldC);
+              #else
+                uk(mr, nr, kc, &Ac[ir*kc], &Bc[jr*kc], Cptr, betaI, ldC); 
+              #endif
 
             }
           }
@@ -418,8 +452,14 @@ void gemm_blis_A3B2C0( char orderA, char orderB, char orderC,
               nr = min(nc-jr, NR);
               Cptr = &Ccol(ic+ir,jc+jr);
 
-	      generic_microkernel(mr, nr, MR, NR, &Ac[ir*kc], &Bc[jr*kc], 
-                                  Cptr, kc, ldC, alpha, betaI, &Ctmp[th_id * MR * NR], uk, uk_edge);
+	      #if defined(ARMV8) && (defined(NQ_FP32) || defined(FQ_FP32))
+                if (mr == MR && nr == NR)
+                  uk(kc, &alpha, &Ac[ir*kc], &Bc[jr*kc], &betaI, Cptr, ldC * sizeof(float));
+                else
+                  uk_edge(mr, nr, MR, NR, kc, &alpha, &Ac[ir*kc], &Bc[jr*kc], &betaI, aux, Cptr, ldC);
+              #else
+                uk(mr, nr, kc, &Ac[ir*kc], &Bc[jr*kc], Cptr, betaI, ldC); 
+              #endif
 
             }
           }
@@ -464,8 +504,15 @@ void gemm_blis_A3B2C0( char orderA, char orderB, char orderC,
               nr = min(nc-jr, NR);
               Cptr = &Ccol(ic+ir,jc+jr);
 
-	      generic_microkernel(mr, nr, MR, NR, &Ac[ir*kc], &Bc[jr*kc], 
-                                  Cptr, kc, ldC, alpha, betaI, &Ctmp[th_id * MR * NR], uk, uk_edge);
+	      #if defined(ARMV8) && (defined(NQ_FP32) || defined(FQ_FP32))
+                if (mr == MR && nr == NR)
+                  uk(kc, &alpha, &Ac[ir*kc], &Bc[jr*kc], &betaI, Cptr, ldC * sizeof(float));
+                else
+                  uk_edge(mr, nr, MR, NR, kc, &alpha, &Ac[ir*kc], &Bc[jr*kc], &betaI, aux, Cptr, ldC);
+              #else
+                uk(mr, nr, kc, &Ac[ir*kc], &Bc[jr*kc], Cptr, betaI, ldC); 
+              #endif
+
             }
           }
         #ifdef OMP_ENABLE
@@ -501,6 +548,7 @@ void pack_RB( char orderM, char transM, int mc, int nc,
       }
     }
 }
+
 
 void pack_CB( char orderM, char transM, int mc, int nc, 
               AB_TYPE *M, int ldM, AB_PACK_TYPE *Mc, int RR ) {

@@ -73,8 +73,6 @@ fi
 
 sys_arch=$(uname -p)
 
-if [ "$sys_arch" = "aarch64" ]; then
-  taskset -c $cpus ./build/gemm_driver.x "cnn" $CONFIGFILE $TMIN $TEST $DEBUG $OUTCSV $MR $NR $THREADS GEMM $GEMM $BESTOF "cache-arch/"$PLATFORM $MC $NC $KC $PARALLEL_LOOP
-fi
+taskset -c $cpus ./build/gemm_driver.x "cnn" $CONFIGFILE $TMIN $TEST $DEBUG $OUTCSV $MR $NR $THREADS GEMM $GEMM $BESTOF "cache-arch/"$PLATFORM $MC $NC $KC $PARALLEL_LOOP
 
 

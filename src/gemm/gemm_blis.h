@@ -69,9 +69,6 @@ void dot_gemm( char orderA, char orderB, char orderC,
 void pack_RB( char, char, int, int, AB_TYPE *, int, AB_PACK_TYPE *, int );
 void pack_CB( char, char, int, int, AB_TYPE *, int, AB_PACK_TYPE *, int );
 
-void pack_RB_v( char, char, int, int, AB_TYPE *, int, AB_PACK_TYPE *, int );
-void pack_CB_v( char, char, int, int, AB_TYPE *, int, AB_PACK_TYPE *, int );
-
 void pack_dot_A(char orderA, int mc, int kc, AB_TYPE *M, int ldM, AB_PACK_TYPE *Mc, int MR);
 void pack_dot_B(char orderB, int kc, int nc, AB_TYPE *M, int ldM, AB_PACK_TYPE *Mc, int NR);
 

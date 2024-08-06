@@ -74,7 +74,7 @@ void print_tensor4D_fp32( char *name, int m1, int m2, int m3, int m4, float *T, 
     printf( "%s[%d,%d,%d,%d] = %8.4e;\n", name, i1, i2, i3, i4, ((double) Trow4D(i1, i2, i3, i4)) );
 }
 
-#ifdef FP16
+#if defined(FQ_FP16) || defined(NQ_FP16)
 void print_tensor4D_fp16( char *name, int m1, int m2, int m3, int m4, float16_t *T, int ldT1, int ldT2, int ldT3 ) {
   int i1, i2, i3, i4;
 
@@ -123,6 +123,7 @@ void generate_matrix_fp32( int orderM, size_t m, size_t n, float *M, size_t ldM 
         Mrow(i,j) = ((float) rand())/RAND_MAX + 1.0;
 }
 
+#if defined(FQ_FP16) || defined(NQ_FP16)
 void generate_matrix_fp16( int orderM, size_t m, size_t n, float16_t *M, size_t ldM ) {
   int i, j;
   
@@ -135,6 +136,7 @@ void generate_matrix_fp16( int orderM, size_t m, size_t n, float16_t *M, size_t 
       for ( i=0; i<m; i++ )
         Mrow(i,j) = ((float) rand())/RAND_MAX + 1.0;
 }
+#endif
 
 void generate_matrix_int8( int orderM, size_t m, size_t n, int8_t *M, size_t ldM ) {
   int i, j;

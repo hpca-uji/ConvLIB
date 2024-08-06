@@ -6,7 +6,9 @@
 #    [*] CARMEL
 #   RISC-V:
 #    [*] C906
+#    [*] C908
 #    [*] C910
+#    [*] K1
 #----------------------------------------------------------
 # Architectures with ARMv8 support:
 #    > A57    (Jetson Nano)
@@ -15,8 +17,11 @@
 # Architectures with RISC-V v0.7 support:
 #    > C906
 #    > C910
+# Architectures with RISC-V v1.0 support:
+#    > C908
+#    > K1     (Banana-Pi)
 #----------------------------------------------------------
-PROCESSOR = A78AE
+PROCESSOR = K1
 #----------------------------------------------------------
 
 #----------------------------------------------------------
@@ -25,7 +30,7 @@ PROCESSOR = A78AE
 #----------------------------------------------------------
 OPENBLAS_ENABLE   = F
 BLIS_ENABLE       = F
-POWER_CONSUMPTION = T
+POWER_CONSUMPTION = F
 #----------------------------------------------------------
 
 
@@ -43,8 +48,6 @@ POWER_CONSUMPTION = T
 #  [*] FQ_FP32        #Input:INT8  + Pack:FP32  + Micro:FP32
 #  [*] FQ_INT32       #Input:INT8  + Pack:FP32  + Micro:FP32
 #  [*] Q_INT8_INT32   #Input:INT8  + Pack:INT8  + Micro:INT8+INT32
-#  [] NQ_FP16         #Input:FP16  + Pack:FP16  + Micro:FP16 #TODO:
-#  [] FQ_FP16         #Input:INT8  + Pack:FP32  + Micro:FP32 #TODO:
 #----------------------------------------------------------
 DTYPE = NQ_FP32
 #----------------------------------------------------------

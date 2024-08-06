@@ -1,0 +1,11 @@
+# +---------------------------------+
+# |   RISCV K1 Cache Configuration  |
+# +---------------------------------+
+# Note: L1 sets 128 and L2 sets 512. 
+# but, we obtain a best performance with 512 sets for L1 and 1024 for L2.
+# https://gitee.com/bianbu-linux/linux-6.1/blob/bl-v1.0.y/arch/riscv/boot/dts/spacemit/k1-x.dtsi
+# https://lore.kernel.org/all/20240703-k1-01-basic-dt-v3-8-12f73b47461e@gentoo.org/
+#Level	SL	NL	CL	WL
+1	32768	512	64	4
+2	524288	1024	64	16
+3	4194304	4096	64	16

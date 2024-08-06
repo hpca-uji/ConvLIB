@@ -14,8 +14,6 @@
 #include "arrays.h"
 #include "ukernels.h"
 
-#include "asm_generator/ukernels/gemm_ukernel_headers.h"
-
 #define min(a,b)     ( (a) > (b) ? (b) : (a) )
 
 
