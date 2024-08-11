@@ -30,19 +30,13 @@ PROCESSOR = A78AE
 #----------------------------------------------------------
 OPENBLAS_ENABLE   = F
 BLIS_ENABLE       = F
-POWER_CONSUMPTION = F
+POWER_CONSUMPTION = T
 #----------------------------------------------------------
 
 
 #----------------------------------------------------------
 #Convolution Data Type. 
 #----------------------------------------------------------
-# Options availables for Direct Convolution:
-#  [*] NQ_FP32        #Only float data arithmetic
-#  [*] NQ_FP16        #Only float16 data arithmetic
-#  [*] Q_INT8_INT32   #Quantization int8 to int32
-#----------------------------------------------------------
-# Options availables for GEMM:
 #  [*] NQ_FP32        #Input:FP32  + Pack:FP32  + Micro:FP32
 #  [*] NQ_INT32       #Input:INT32 + Pack:INT32 + Micro:INT32
 #  [*] FQ_FP32        #Input:INT8  + Pack:FP32  + Micro:FP32

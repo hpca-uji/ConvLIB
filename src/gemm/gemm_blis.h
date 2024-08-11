@@ -50,7 +50,7 @@ void gemm_blis_B3A2C0( char, char, char, char, char, size_t, size_t, size_t,
 		       C_TYPE, AB_TYPE *, size_t, AB_TYPE *, size_t, 
 		       C_TYPE, C_TYPE *, size_t,  AB_PACK_TYPE *, AB_PACK_TYPE *, 
 		       size_t, size_t, size_t, int, int, int, int, C_TYPE *,
-		       UK_TYPE *uk_vec, UK_EDGE_TYPE *uk_edge_vec);
+		       UK_TYPE *uk_vec, UK_EDGE_TYPE *uk_edge_vec, int prepackA);
 
 
 void gemm_blis_A3B2C0( char, char, char, char, char, size_t, size_t, size_t, 

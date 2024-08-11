@@ -70,11 +70,11 @@ if [ "$ALGORITHM" = "LOWERING" ] && [ "$GEMM" = "BLIS" ]; then
   BESTOF=F
 fi
 
-if [ "$ALGORITHM" = "WINOGRAD" ] ; then
-  echo " WARNING: WINOGRAD Enable. BESTOF Option not available. Disabled automaticaly."
+if [ "$GEMM" = "SDOT_GEMM" ] ; then
+  echo " WARNING: With SDOT gemm, BESTOF option is disabled automaticaly and only is avaiable the micro-kernel 4x16."
   BESTOF=F
   MR=4
-  NR=4
+  NR=16
 fi
 
 sys_arch=$(uname -p)

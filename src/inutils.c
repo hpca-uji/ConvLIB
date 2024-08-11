@@ -217,6 +217,13 @@ testConfig_t* new_CNN_Test_Config(char * argv[]) {
   #else
     printf(" |  [%s*%s] Data Type                      |  %s%-74s%s|\n", COLOR_BOLDYELLOW, COLOR_RESET, COLOR_BOLDCYAN, "UNKNOWN", COLOR_RESET);
   #endif
+
+  #ifdef ENERGY_CONSUMPTION
+    printf(" |  [%s*%s] Energy Consumption             |  %s%-74s%s|\n", COLOR_BOLDYELLOW, COLOR_RESET, COLOR_BOLDCYAN, "ENABLE", COLOR_RESET);
+  #else
+    printf(" |  [%s*%s] Energy Consumption             |  %s%-74s%s|\n", COLOR_BOLDYELLOW, COLOR_RESET, COLOR_BOLDCYAN, "DISABLE", COLOR_RESET);
+  #endif
+
   printf(" +=====================================+============================================================================+\n\n");
 
   if ((new_testConfig->debug == 'T') && (new_testConfig->test != 'T')) {

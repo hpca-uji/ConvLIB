@@ -98,8 +98,7 @@ void convgemm_blis_B3A2C0(char orderA, char orderB, char orderC,
                     int nr = min(nc - jr, NR);
                     C_TYPE *Cptr = (orderC == 'C') ? &Ccol(ic + ir, jc + jr) : &Crow(ic + ir, jc + jr);
 
-                    generic_microkernel(mr, nr, MR, NR, &Ac[ir*kc], &Bc[jr*kc],
-                                        Cptr, kc, ldC, alpha, betaI, Ctmp_th, uk, uk_edge);
+		    uk(mr, nr, kc, &Ac[ir*kc], &Bc[jr*kc], Cptr, betaI, ldC);
 
 
                     }

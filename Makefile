@@ -136,7 +136,9 @@ OBJ_CONVGEMM_FILES = $(patsubst ./src/convGemm/%.c, $(OBJDIR)/%.o, $(SRC_CONVGEM
 OBJ_CONVOLUTION  = $(OBJ_FILES) $(OBJ_CONV_FILES) $(OBJ_GEMM_FILES) $(OBJ_CONVGEMM_FILES) $(OBJDIR)/driver_convDirect.o
 OBJ_GEMM         = $(OBJ_FILES) $(OBJ_CONV_FILES) $(OBJ_GEMM_FILES) $(OBJ_CONVGEMM_FILES) $(OBJDIR)/driver_gemm.o
 
-
+ifeq ($(POWER_CONSUMPTION), T)
+  OBJ_FILES += $(OBJDIR)/energy.o
+endif
 
 all: $(OBJDIR)/$(CONV_BIN) $(OBJDIR)/$(GEMM_BIN)
 

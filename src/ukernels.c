@@ -33,17 +33,6 @@ void fselector(int MR, int NR, int algorithm, int gemm, UK_TYPE *uk_vec, UK_EDGE
 }
 
 
-
-//Generic micro-kernel for other convolutional algorithms
-void generic_microkernel(int mr, int nr, int MR, int NR, AB_PACK_TYPE *A, AB_PACK_TYPE *B, 
-		         C_TYPE *C, uint32_t kc, uint32_t ldC, C_TYPE alpha, C_TYPE beta, 
-			 C_TYPE *aux, UK_TYPE uk, UK_EDGE_TYPE uk_edge) {
-
-    uk(mr, nr, kc, A, B, C, beta, ldC); 
-
-}
-
-
 //============================================================================================
 // MICRO-KERNELS FOR DOT PRODUCT
 //============================================================================================

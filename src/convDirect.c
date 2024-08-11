@@ -188,10 +188,12 @@ void convDirect_block_blis( int t, int Co, int Ci, int Ho,    int Wo,
 		     nr = min(jb-jr, NR);
 		     for ( ir=0; ir < min(kb, Wo-k-m+1); ir += MR) {
 		       mr = min(min(kb, Wo-k-m+1)-ir, MR);
-		       Y_ptr=&Yrow_NHWC(h, j + jr, l, k + ir);
-		       
-                       generic_microkernel(nr, mr, NR, MR, &FBrow_NHWC(j2 * Cob_Nr + jr2, i, n, m, 0), 
-				           &Ac[ir*ib], Y_ptr, ib, ldY3, alpha, beta, Ctmp, uk, uk_edge);
+		      
+		        uk(nr, mr, ib, &FBrow_NHWC(j2 * Cob_Nr + jr2, i, n, m, 0), 
+			   &Ac[ir*ib], &Yrow_NHWC(h, j + jr, l, k + ir), beta, ldY3);	
+
+                       //generic_microkernel(nr, mr, NR, MR, &FBrow_NHWC(j2 * Cob_Nr + jr2, i, n, m, 0), 
+				           //&Ac[ir*ib], &Yrow_NHWC(h, j + jr, l, k + ir), ib, ldY3, alpha, beta, Ctmp, uk, uk_edge);
 		       	
                      }
                    }
@@ -231,10 +233,12 @@ void convDirect_block_blis( int t, int Co, int Ci, int Ho,    int Wo,
 	              jr2 = jr/NR;
 	              for ( ir=0; ir < kb_limit; ir += MR) {
 	  	        mr = min(kb_limit-ir, MR);
-		        Y_ptr=&Yrow_NHWC(h, j + jr, l, k + ir);
 
-                        generic_microkernel(nr, mr, NR, MR, &FBrow_NHWC(j2 * Cob_Nr + jr2, i, n, m, 0), 
-				           &Ac[(th_id * CIB * WOB) + (ir*ib)], Y_ptr, ib, ldY3, alpha, beta, Ctmp_ptr, uk, uk_edge);
+		        uk(nr, mr, ib, &FBrow_NHWC(j2 * Cob_Nr + jr2, i, n, m, 0), 
+			   &Ac[ir*ib], &Yrow_NHWC(h, j + jr, l, k + ir), beta, ldY3);	
+
+                        //generic_microkernel(nr, mr, NR, MR, &FBrow_NHWC(j2 * Cob_Nr + jr2, i, n, m, 0), 
+				           //&Ac[(th_id * CIB * WOB) + (ir*ib)], Y_ptr, ib, ldY3, alpha, beta, Ctmp_ptr, uk, uk_edge);
 
 	              }
                     }

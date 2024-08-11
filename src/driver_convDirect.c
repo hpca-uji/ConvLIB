@@ -63,7 +63,9 @@
 
 #define dabs(a)      ( (a) > 0.0 ? (a) : -(a) )
 
-
+#ifdef ENERGY_CONSUMPTION
+  #include "energy.h"
+#endif
 
 int main(int argc, char *argv[]) {
   char* variant;
@@ -100,7 +102,8 @@ int main(int argc, char *argv[]) {
          ldF1,  ldF2,  ldF3,
          ldFB1, ldFB2, ldFB3, ldFB4,
          ldY1,  ldY2,  ldY3,
-         visual, nreps, ho, wo, homax, womax;
+         visual, nreps, ho, wo, homax, womax,
+	 prepackA, ukn;
   
   int ib, i, i2, ii, Ci_Cib, Co_Cob, Co_Nr, Co_Mr;
   char *filename;
@@ -132,7 +135,9 @@ int main(int argc, char *argv[]) {
   UK_TYPE uk;
   UK_EDGE_TYPE uk_edge;
 
-  int algorithm, gemm;
+  int algorithm, gemm, uk_num;
+
+  prepackA = 0;
 
   tmin    = testConf->tmin;
   tformat = testConf->format;
@@ -174,16 +179,19 @@ int main(int argc, char *argv[]) {
   #if defined(NQ_FP32) || defined(FQ_FP32)
     UK_TYPE      *uk_vec      = new_uk_intrinsic_selector_fp32();
     UK_EDGE_TYPE *uk_edge_vec = NULL;
+    UK_CONFIG    *uk_config   = new_uk_intrinsic_config_fp32();
   #elif defined(NQ_INT32) || defined(FQ_INT32)
     UK_TYPE      *uk_vec      = new_uk_intrinsic_selector_int32();
     UK_EDGE_TYPE *uk_edge_vec = NULL;
+    UK_CONFIG    *uk_config   = new_uk_intrinsic_config_int32();
   #elif FP16
     UK_TYPE      *uk_vec      = new_uk_intrinsic_selector_fp16();
     UK_EDGE_TYPE *uk_edge_vec = NULL;
+    UK_CONFIG    *uk_config   = new_uk_intrinsic_config_fp16();
   #elif Q_INT8_INT32
     UK_TYPE      *uk_vec      = new_uk_intrinsic_selector_int8_int32();
-    //UK_TYPE      *uk_vec      = new_uk_intrinsic_selector_int8_int32_u8();
     UK_EDGE_TYPE *uk_edge_vec = NULL;
+    UK_CONFIG    *uk_config   = new_uk_intrinsic_config_int8_int32();
   #else
     printf("ERROR: Type unsupported\n");
     exit(-1);
@@ -207,7 +215,51 @@ int main(int argc, char *argv[]) {
     errorthd = 1.0e-14;
   #endif
 
-  fprintf(testConf->fd_csv, "l;WOB;COB;CIB;n;k;c;ho;wo;kh;kw;Time;GFLOPS;Error;MR;NR\n");    
+  fprintf(testConf->fd_csv, "l;WOB;COB;CIB;n;k;c;ho;wo;kh;kw;Time;GFLOPS;Error;MR;NR;");    
+
+  #ifdef ENERGY_CONSUMPTION
+    //POWER CONSUMPTION
+    server_t server;
+    line_t lines;
+    counter_t counter;
+
+    int frequency=0, aggregate=1;
+    char platform[256];
+
+    //Server configuration
+    pm_set_server("127.0.0.1", 6526, &server);
+
+    #ifdef CARMEL
+      pm_set_lines("0-5", &lines);
+      const int nmeasures = 6;
+      char measures_info[6][128] = {"GPU", "CPU", "SOC", "CV", "VDDRQ", "SYS5V"};
+      sprintf(platform, "%s", "Jetson-Xavier");
+    #elif A78AE
+      pm_set_lines("0-3", &lines);
+      const int nmeasures = 4;
+      char measures_info[4][128] = {"VDD_GPU_SOC", "VDD_CPU_CV", "VIN_SYS_5V0", "VDDQ_VDD2_1V8AO"};
+      sprintf(platform, "%s", "Jetson-Orin");
+    #elif A57
+      pm_set_lines("0-2", &lines);
+      const int nmeasures = 3;
+      char measures_info[3][128] = {"POM_5V_IN", "POM_5V_GPU", "POM_5V_CPU"};
+      sprintf(platform, "%s", "Jetson-Nano");
+   #else
+      const int nmeasures = 0;
+      printf("Architecture unsuported with PMLIB.\n");
+      exit(-1);
+    #endif
+
+    pm_create_counter(platform, lines, !aggregate, frequency, server, &counter);
+    double measures[nmeasures+1];
+    double best_measures[nmeasures+1];
+
+    for (m = 0; m < nmeasures; m++) fprintf(testConf->fd_csv, "%s;", measures_info[m]);
+
+    sleep(1);
+
+  #endif
+  fprintf(testConf->fd_csv, "\n");
 
   printf(" +==================================================================================================================+\n");
   printf(" |%s                                        DRIVER FOR NHWC CONVOLUTION EVALUATION                                    %s|\n",
@@ -244,150 +296,134 @@ int main(int argc, char *argv[]) {
     int k_gemm = c * r * s;
 
     //-------------------------------------------------
-    //Iterate over MR-NR
+    // Iterate over MR-NR
     //-------------------------------------------------
-    mr_limit = testConf->MR;
-    nr_limit = testConf->NR;
-    mr_init  = testConf->MR;
-    nr_init  = testConf->NR;
 
-    if (testConf->bestof=='T') {
-      #if NQ_FP32 || defined(FQ_FP32)
-        mr_limit = 20;
-        nr_limit = 20;
-        mr_init  = 4;
-        nr_init  = 4;
-      #elif FP16
-        mr_limit = 40;
-        nr_limit = 40;
-        mr_init  = 8;
-        nr_init  = 8;
-      #else
-        mr_limit = 24;
-        nr_limit = 24;
-        mr_init  = 8;
-        nr_init  = 4;
-      #endif
-      if ((algorithm == LOWERING) &&  (gemm == SDOT_GEMM)) {
-        mr_limit = 4;
-        nr_limit = 16;
-        mr_init  = 4;
-        nr_init  = 16;
-      }
+    if (testConf->bestof=='T') uk_num = uk_config->uk_num;
+    else                       uk_num = 1;
+
+    if (gemm == SDOT_GEMM) {
+      testConf->MR = 4;
+      testConf->NR = 16;
     }
 
     best_error=0.0; best_flops=0.0; best_time = 0.0;
 
-    for (mr_iter=mr_init; mr_iter < mr_limit + 1; mr_iter+=mr_init) {
-      for (nr_iter=nr_init; nr_iter < nr_limit + 1; nr_iter+=nr_init) {
+    for (ukn = 0; ukn < uk_num; ukn++) {
 
-        MR = mr_iter;
-        NR = nr_iter;
+      if (testConf->bestof=='T') {
+        MR = uk_config->mr_pool[ukn];
+        NR = uk_config->nr_pool[ukn];
+      } else {
+        MR = testConf->MR;
+        NR = testConf->NR;
+      }
 
-        if (algorithm == CONVDIRECT) fselector(NR, MR, algorithm, gemm, uk_vec, uk_edge_vec, &uk, &uk_edge);
-	else                         fselector(MR, NR, algorithm, gemm, uk_vec, uk_edge_vec, &uk, &uk_edge);
-  
-	if (uk == NULL) continue;
+      if (algorithm == CONVDIRECT)
+        fselector(NR, MR, LOWERING, gemm, uk_vec, uk_edge_vec, &uk, &uk_edge);
+      else
+        fselector(MR, NR, LOWERING, gemm, uk_vec, uk_edge_vec, &uk, &uk_edge);
+
+      if (uk == NULL) continue;
 	
-        if ((algorithm==LOWERING) || (algorithm==CONVGEMM)) {
-          if (model_on) {
-	    if (gemm==A3B2C0)
-              get_optim_mc_nc_kc(sizeof(C_TYPE), n_gemm, m_gemm, k_gemm, NR, MR, &COB, &WOB, &CIB, params);
-	    else
-              get_optim_mc_nc_kc(sizeof(C_TYPE), m_gemm, n_gemm, k_gemm, MR, NR, &WOB, &COB, &CIB, params);
-            mc_blis = WOB; nc_blis = COB; kc_blis = CIB;
-	  }
-          Ac_blis = (AB_PACK_TYPE *)aligned_alloc(32, TH * 10 * m_gemm * k_gemm * sizeof(AB_PACK_TYPE));
-          Bc_blis = (AB_PACK_TYPE *)aligned_alloc(32, TH * 10 * n_gemm * k_gemm * sizeof(AB_PACK_TYPE));
-        } else {
+      if ((algorithm==LOWERING) || (algorithm==CONVGEMM)) {
+        if (model_on) {
+	  if (gemm==A3B2C0)
+            get_optim_mc_nc_kc(sizeof(C_TYPE), n_gemm, m_gemm, k_gemm, NR, MR, &COB, &WOB, &CIB, params);
+	  else
+            get_optim_mc_nc_kc(sizeof(C_TYPE), m_gemm, n_gemm, k_gemm, MR, NR, &WOB, &COB, &CIB, params);
+          mc_blis = WOB; nc_blis = COB; kc_blis = CIB;
+	}
+        Ac_blis = (AB_PACK_TYPE *)aligned_alloc(32, TH * 10 * m_gemm * k_gemm * sizeof(AB_PACK_TYPE));
+        Bc_blis = (AB_PACK_TYPE *)aligned_alloc(32, TH * 10 * n_gemm * k_gemm * sizeof(AB_PACK_TYPE));
+      } else {
           
-	  if (model_on) {
-	    //m=Wo; n=Co; k=Ci
-            get_optim_mc_nc_kc(sizeof(C_TYPE), k, wo, c, NR, MR, &COB, &WOB, &CIB, params);
-	    //TODO: Poor performance. Why?? Reverse micro-kernels??
-            //get_optim_mc_nc_kc(sizeof(DTYPE), wo, k, c, MR, NR, &WOB, &COB, &CIB, params);
-	  } else {
-            if (WOB != -1) WOB = WOB / MR * MR;
-            if (COB != -1) COB = COB / NR * NR;
-	  }
-
-          if (WOB != wo && WOB % MR != 0) {
-            printf("ERROR: WOB must be multiple of MR. Now WOB=%d and MR=%d\n", WOB, MR);
-            exit(-1);
-          } else if (COB != k && COB % NR != 0) {
-            printf("ERROR: COB must be multiple of NR. Now COB=%d and NR=%d\n", COB, NR);
-            exit(-1);
-          }
-
-          Ac = (AB_PACK_TYPE *) aligned_alloc( 32, ((int) TH*WOB*MR*CIB*sizeof(AB_PACK_TYPE)));
-          FB = (AB_PACK_TYPE *) malloc( ceil(((float) k)/NR)*NR*c*r*s*sizeof(AB_PACK_TYPE));
-
-        }
-    
-        if (algorithm==LOWERING) {
-          DEXT  = (AB_TYPE *) malloc( h*w*n*r*s*c*sizeof(AB_TYPE));
-          //Input by rows. Only for sdot product!
-          DEXTr = (AB_TYPE *) malloc( h*w*n*r*s*c*sizeof(AB_TYPE));
+	if (model_on) {
+	  //m=Wo; n=Co; k=Ci
+          get_optim_mc_nc_kc(sizeof(C_TYPE), k, wo, c, NR, MR, &COB, &WOB, &CIB, params);
+	  //TODO: Poor performance. Why?? Reverse micro-kernels??
+          //get_optim_mc_nc_kc(sizeof(DTYPE), wo, k, c, MR, NR, &WOB, &COB, &CIB, params);
+	} else {
+          if (WOB != -1) WOB = WOB / MR * MR;
+          if (COB != -1) COB = COB / NR * NR;
 	}
 
-        D    = (AB_TYPE *) malloc( n*c*h*w*sizeof(AB_TYPE));
+        if (WOB != wo && WOB % MR != 0) {
+          printf("ERROR: WOB must be multiple of MR. Now WOB=%d and MR=%d\n", WOB, MR);
+          exit(-1);
+        } else if (COB != k && COB % NR != 0) {
+          printf("ERROR: COB must be multiple of NR. Now COB=%d and NR=%d\n", COB, NR);
+          exit(-1);
+        }
 
-        F = (AB_TYPE *) malloc( k*c*r*s*sizeof(AB_TYPE));   
-        Y = (C_TYPE *) malloc( n*k*h*w*sizeof(C_TYPE));
-          
-        Ctmp = (C_TYPE *)malloc(TH * MR  * NR *sizeof(C_TYPE));
+        Ac = (AB_PACK_TYPE *) aligned_alloc( 32, ((int) TH*WOB*MR*CIB*sizeof(AB_PACK_TYPE)));
+        FB = (AB_PACK_TYPE *) malloc( ceil(((float) k)/NR)*NR*c*r*s*sizeof(AB_PACK_TYPE));
+
+      }
     
-        Yg = (C_TYPE *) malloc( n*k*h*w*sizeof(C_TYPE) );   
+      if (algorithm==LOWERING) {
+        DEXT  = (AB_TYPE *) malloc( h*w*n*r*s*c*sizeof(AB_TYPE));
+        //Input by rows. Only for sdot product!
+        DEXTr = (AB_TYPE *) malloc( h*w*n*r*s*c*sizeof(AB_TYPE));
+      }
+
+      D    = (AB_TYPE *) malloc( n*c*h*w*sizeof(AB_TYPE));
+
+      F = (AB_TYPE *) malloc( k*c*r*s*sizeof(AB_TYPE));   
+      Y = (C_TYPE *) malloc( n*k*h*w*sizeof(C_TYPE));
           
-        Ci_Cib = (int)ceil(((float) c)/CIB);
-        Co_Cob = (int)ceil(((float) k)/COB);
-        Co_Nr  = (int)ceil(((float) k)/NR);
-        Co_Mr  = (int)ceil(((float) k)/MR);
+      Ctmp = (C_TYPE *)malloc(TH * MR  * NR *sizeof(C_TYPE));
     
-        ldD3 = c;
-        ldD2 = w * ldD3;
-        ldD1 = h * ldD2;
-
-        ldF3 = k;
-        ldF2 = s*ldF3;
-        ldF1 = r*ldF2;
-
-        ldY3 = k;
-        ldY2 = wo*ldY3;
-        ldY1 = ho*ldY2;
+      Yg = (C_TYPE *) malloc( n*k*h*w*sizeof(C_TYPE) );   
           
-        ldFB4 = NR;
-        ldFB3 = c*ldFB4;
-        ldFB2 = Co_Nr*ldFB3;
-        ldFB1 = s*ldFB2;
+      Ci_Cib = (int)ceil(((float) c)/CIB);
+      Co_Cob = (int)ceil(((float) k)/COB);
+      Co_Nr  = (int)ceil(((float) k)/NR);
+      Co_Mr  = (int)ceil(((float) k)/MR);
+    
+      ldD3 = c;
+      ldD2 = w * ldD3;
+      ldD1 = h * ldD2;
+
+      ldF3 = k;
+      ldF2 = s*ldF3;
+      ldF1 = r*ldF2;
+
+      ldY3 = k;
+      ldY2 = wo*ldY3;
+      ldY1 = ho*ldY2;
+          
+      ldFB4 = NR;
+      ldFB3 = c*ldFB4;
+      ldFB2 = Co_Nr*ldFB3;
+      ldFB1 = s*ldFB2;
          
-        generate_tensor4D( n, h, w, c, D, ldD1, ldD2, ldD3 );
-        generate_tensor4D( c, r, s, k, F, ldF1, ldF2, ldF3 );
+      generate_tensor4D( n, h, w, c, D, ldD1, ldD2, ldD3 );
+      generate_tensor4D( c, r, s, k, F, ldF1, ldF2, ldF3 );
 
 
-        // Set result to zeros
-	for (int i=0; i < n * k * ho * wo; i++) { Y[i]=0; Yg[i]=0; }
+      // Set result to zeros
+      for (int i=0; i < n * k * ho * wo; i++) { Y[i]=0; Yg[i]=0; }
 
-         if ( testConf->debug=='T' ) {
-	   #ifdef NQ_FP32
-             print_tensor4D_fp32( "D", n, h, w, c, D, ldD1, ldD2, ldD3 );
-             print_tensor4D_fp32( "F", c, r, s, k, F, ldF1, ldF2, ldF3 );
-	   #elif FQ_FP32 || FQ_INT32
-             print_tensor4D_int8( "D", n, h, w, c, D, ldD1, ldD2, ldD3 );
-             print_tensor4D_int8( "F", c, r, s, k, F, ldF1, ldF2, ldF3 );
-	   #elif NQ_INT32
-             print_tensor4D_int32( "D", n, h, w, c, D, ldD1, ldD2, ldD3 );
-             print_tensor4D_int32( "F", c, r, s, k, F, ldF1, ldF2, ldF3 );
-	   #elif FP16
-             print_tensor4D_fp16( "D", n, h, w, c, D, ldD1, ldD2, ldD3 );
-             print_tensor4D_fp16( "F", c, r, s, k, F, ldF1, ldF2, ldF3 );
-           #else
-             print_tensor4D_int8( "D", n, h, w, c, D, ldD1, ldD2, ldD3 );
-             print_tensor4D_int8( "F", c, r, s, k, F, ldF1, ldF2, ldF3 );
-           #endif
-         }
+        if ( testConf->debug=='T' ) {
+	 #ifdef NQ_FP32
+           print_tensor4D_fp32( "D", n, h, w, c, D, ldD1, ldD2, ldD3 );
+           print_tensor4D_fp32( "F", c, r, s, k, F, ldF1, ldF2, ldF3 );
+	 #elif FQ_FP32 || FQ_INT32
+           print_tensor4D_int8( "D", n, h, w, c, D, ldD1, ldD2, ldD3 );
+           print_tensor4D_int8( "F", c, r, s, k, F, ldF1, ldF2, ldF3 );
+	 #elif NQ_INT32
+           print_tensor4D_int32( "D", n, h, w, c, D, ldD1, ldD2, ldD3 );
+           print_tensor4D_int32( "F", c, r, s, k, F, ldF1, ldF2, ldF3 );
+	 #elif FP16
+           print_tensor4D_fp16( "D", n, h, w, c, D, ldD1, ldD2, ldD3 );
+           print_tensor4D_fp16( "F", c, r, s, k, F, ldF1, ldF2, ldF3 );
+         #else
+           print_tensor4D_int8( "D", n, h, w, c, D, ldD1, ldD2, ldD3 );
+           print_tensor4D_int8( "F", c, r, s, k, F, ldF1, ldF2, ldF3 );
+         #endif
+        }
    
-
 	//Preparing lowering parameters.
 	mm = k;
 	nn = ho * wo * n;
@@ -398,16 +434,37 @@ int main(int argc, char *argv[]) {
 	ldb = r * s * c;
 	ldc = k;
 
+	//------------------------------------------------------------------------
 	//Prepacking weights. Convdirect and Lowering + SDOT
+	//------------------------------------------------------------------------
         if (algorithm == CONVDIRECT)
           transform_filter_block_blis(c, k, r, s, F,  ldF1,  ldF2,  ldF3, FB, 
 			              ldFB1, ldFB2, ldFB3, ldFB4, tformat, MR, NR);
+	else if (algorithm == LOWERING) {
+	  if(gemm == SDOT_GEMM)
+	    prepack_dot_A( 'C', mm, kk, F, lda, Ac_blis, mc_blis, kc_blis, MR);
+	  else if(gemm == B3A2C0)
+	    prepack_saxpy_A( 'C', mm, kk, F, lda, Ac_blis, mc_blis, kc_blis, MR);
+	  prepackA = 1;
+	}
+	//------------------------------------------------------------------------
 
-	//else if (algorithm == LOWERING) 
-	  //if(gemm == SDOT_GEMM)
-	    //prepack_dot_A( 'C', mm, kk, F, lda, Ac_blis, mc_blis, kc_blis, MR);
-	  //else if(gemm == B3A2C0)
-	    //prepack_saxpy_A( 'C', mm, kk, F, lda, Ac_blis, mc_blis, kc_blis, MR);
+        #ifdef ENERGY_CONSUMPTION
+          //Warming up engines...
+          pm_start_counter(&counter);
+          time  = 0.0;
+          t1    = dclock();
+          while ( time <= tmin ) {
+            for (int i=0; i < n * k * ho * wo; i++) { Y[i]=0; Yg[i]=0; }
+            t2 = dclock();
+            time = ( t2 > t1 ? t2 - t1 : 0.0 );
+          }
+          pm_stop_counter(&counter);
+          pm_get_counter_data(&counter);
+
+          //Start Counter
+          pm_start_counter(&counter);
+        #endif
 
         time  = 0.0; 
         t1    = dclock();
@@ -434,7 +491,7 @@ int main(int argc, char *argv[]) {
               gemm_blis_B3A2C0( 'C', 'C', 'C', 'N', 'N', mm, nn, kk, 
                                 alphap, F, lda, DEXT, ldb, betap, Y, ldc,
                                 Ac_blis, Bc_blis, mc_blis, nc_blis, kc_blis, 
-				MR, NR, TH, testConf->LOOP, Ctmp, uk_vec, uk_edge_vec);
+				MR, NR, TH, testConf->LOOP, Ctmp, uk_vec, uk_edge_vec, prepackA);
 	    } else if (gemm == A3B2C0) {
               gemm_blis_A3B2C0( 'C', 'C', 'C', 'N', 'N', mm, nn, kk, 
                                 alphap, F, lda, DEXT, ldb, betap, Y, ldc,
@@ -486,6 +543,13 @@ int main(int argc, char *argv[]) {
           time = ( t2 > t1 ? t2 - t1 : 0.0 );
     
         }
+
+	#ifdef ENERGY_CONSUMPTION
+            pm_stop_counter(&counter);
+            pm_get_counter_data(&counter);
+            pmblib_get_data(counter, lines, -1, measures, nmeasures);
+        #endif
+
         time = time/nreps;
         if ( nreps == 0 ) continue; 
 	    
@@ -552,6 +616,10 @@ int main(int argc, char *argv[]) {
 	  best_COB   = COB;
 	  best_CIB   = CIB;
 	  best_WOB   = WOB;
+	  #ifdef ENERGY_CONSUMPTION
+              for (int m=0; m < nmeasures; m++) best_measures[m] = measures[m];
+          #endif
+
 	}
 	
         if ( testConf->test=='T')
@@ -581,7 +649,6 @@ int main(int argc, char *argv[]) {
         free(F);
         free(Yg);
     
-      }
     }
 
     if (testConf->bestof=='T') {
@@ -597,9 +664,15 @@ int main(int argc, char *argv[]) {
       printf("\n");
       printf(" +---------+---------------------------+--------------------------------------+------------------------------+------+\n");
 
-      fprintf(testConf->fd_csv,"%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%.2e;%.2f;%.2e;%d;%d\n",testConf->cnn[cnn_i].layer, best_WOB, best_COB, best_CIB, n, k, c, ho, wo, r, s, best_time, best_flops, best_error, best_mr, best_nr);
+      fprintf(testConf->fd_csv,"%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%.2e;%.2f;%.2e;%d;%d;",testConf->cnn[cnn_i].layer, best_WOB, best_COB, best_CIB, n, k, c, ho, wo, r, s, best_time, best_flops, best_error, best_mr, best_nr);
     } else
-        fprintf(testConf->fd_csv,"%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%.2e;%.2f;%.2e;%d;%d\n",testConf->cnn[cnn_i].layer, WOB, COB, CIB, n, k, c, ho, wo, r, s, time, GFLOPS, error, MR, NR);
+      fprintf(testConf->fd_csv,"%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;%.2e;%.2f;%.2e;%d;%d;",testConf->cnn[cnn_i].layer, WOB, COB, CIB, n, k, c, ho, wo, r, s, time, GFLOPS, error, MR, NR);
+    
+    #ifdef ENERGY_CONSUMPTION
+      for (m = 0; m < nmeasures; m++) fprintf(testConf->fd_csv, "%.4f;", measures[m]);
+    #endif
+    fprintf(testConf->fd_csv, "\n");
+
   }
 
   fclose(testConf->fd_csv);

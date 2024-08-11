@@ -42,7 +42,7 @@ void gemm_blis_B3A2C0( char orderA, char orderB, char orderC,
 		       size_t ldB, C_TYPE beta, C_TYPE *C, size_t ldC, 
 		       AB_PACK_TYPE *Ac, AB_PACK_TYPE *Bc, size_t MC, size_t NC, size_t KC, 
 		       int MR, int NR, int TH, int loop, C_TYPE *Ctmp, 
-		       UK_TYPE *uk_vec, UK_EDGE_TYPE *uk_edge_vec) {
+		       UK_TYPE *uk_vec, UK_EDGE_TYPE *uk_edge_vec, int prepackA) {
 
   int ic, jc, pc, mc, nc, kc, ir, jr, mr, nr, j, i, th, th_id, mc_pack; 
 
@@ -69,37 +69,37 @@ void gemm_blis_B3A2C0( char orderA, char orderB, char orderC,
   if (TH == 1) {
     for ( jc=0; jc<n; jc+=NC ) {
       nc = min(n-jc, NC); 
+      Acptr = Ac;
       for ( pc=0; pc<k; pc+=KC ) {
         kc = min(k-pc, KC); 
-        Bptr = &Bcol(pc,jc);
         
-	pack_CB( orderB, transB, kc, nc, Bptr, ldB, Bc, NR);
+	pack_CB( orderB, transB, kc, nc, &Bcol(pc,jc), ldB, Bc, NR);
         
 	if ( pc==0 ) betaI = beta;
         else betaI = one;
-        
+
 	for ( ic=0; ic<m; ic+=MC ) {
           mc = min(m-ic, MC); 
 
-          Aptr = &Acol(ic, pc);
-          pack_RB( orderA, transA, mc, kc, Aptr, ldA, Ac, MR);
-          
+	  if (!prepackA)
+            pack_RB( orderA, transA, mc, kc, &Acol(ic, pc), ldA, Acptr, MR);
+
           for (jr=0; jr<nc; jr+=NR ) {
             nr = min(nc-jr, NR); 
             for (ir=0; ir<mc; ir+=MR ) {
               mr = min(mc-ir, MR); 
               Cptr = &Ccol(ic+ir,jc+jr);
 	     
-	      uk(mr, nr, kc, &Ac[ir*kc], &Bc[jr*kc], Cptr, betaI, ldC); 
+	      uk(mr, nr, kc, &Acptr[ir*kc], &Bc[jr*kc], Cptr, betaI, ldC); 
 
 	      //gemm_base_Cresident(orderC, mr, nr, kc, alpha, &Acptr[ir*kc], MR, &Bc[jr*kc], NR,
                                   //betaI, Cptr, ldC );
 
             }
           }
-        
-	  //Acptr += (mc / MR + MR) * kc; 
 
+      	  Acptr += MC * KC;
+        
         }
       }
     }
@@ -479,6 +479,7 @@ void pack_RB( char orderM, char transM, int mc, int nc,
 	      AB_TYPE *M, int ldM, AB_PACK_TYPE *Mc, int RR ){
   //BLIS pack for M-->Mc
   int    i, j, ii, k, rr;
+  //k=0;
   for ( i=0; i<mc; i+=RR ) { 
     k = i*nc;
     rr = min( mc-i, RR );
@@ -497,6 +498,7 @@ void pack_CB( char orderM, char transM, int mc, int nc,
               AB_TYPE *M, int ldM, AB_PACK_TYPE *Mc, int RR ) {
   //BLIS pack for M-->Mc
   int    i, j, jj, k, nr;
+  //k=0;
   for ( j=0; j<nc; j+=RR ) { 
     k = j*mc;
     nr = min( nc-j, RR );
@@ -522,7 +524,6 @@ void prepack_saxpy_A( char orderA, size_t m, size_t k, AB_TYPE *A, size_t ldA, A
 
   for ( pc=0; pc<k; pc+=KC) {
     kc = min(k-pc, KC); 
-    //kc_pack = (int)ceil((double)kc / 16.0) * 16;
 
     for ( ic=0; ic<m; ic+=MC ) {
       mc = min(m-ic, MC); 
@@ -534,7 +535,7 @@ void prepack_saxpy_A( char orderA, size_t m, size_t k, AB_TYPE *A, size_t ldA, A
       //pack_dot_A(orderA, mc, kc, Aptr, ldA, Ac, MR);
       pack_RB( orderA, 'N', mc, kc, Aptr, ldA, Ac, MR);
 
-      Ac += (mc / MR + MR) * kc;
+      Ac += MC * KC;
 
     }
   }
@@ -560,6 +561,7 @@ void dot_gemm( char orderA, char orderB, char orderC,
   C_TYPE  zero = 0, one = 1, beta_edge = 0, betaI, *Ctmp_th, *Cptr, alpha = 1; 
 
   AB_TYPE *Aptr, *Bptr;
+  AB_PACK_TYPE *Acptr;
 
   C_TYPE aux[MR * NR];
 
@@ -577,7 +579,7 @@ void dot_gemm( char orderA, char orderB, char orderC,
 
   for ( jc=0; jc<n; jc+=NC ) {
     nc = min(n-jc, NC); 
-    //Acptr = Ac;
+    Acptr = Ac;
 
     for ( pc=0; pc<k; pc+=KC) {
       kc = min(k-pc, KC); 
@@ -593,12 +595,12 @@ void dot_gemm( char orderA, char orderB, char orderC,
         
       for ( ic=0; ic<m; ic+=MC ) {
         mc = min(m-ic, MC); 
-        //mc_pack = (int)ceil((double)mc / (double)MR) * MR;
+        mc_pack = (int)ceil((double)mc / (double)MR) * MR;
         
 	//Prepacking A (weights)
-	if (orderA == 'C') Aptr = &Acol(ic, pc);
-	else               Aptr = &Arow(ic, pc);
-        pack_dot_A(orderA, mc, kc, Aptr, ldA, Ac, MR);
+	//if (orderA == 'C') Aptr = &Acol(ic, pc);
+	//else               Aptr = &Arow(ic, pc);
+        //pack_dot_A(orderA, mc, kc, Aptr, ldA, Ac, MR);
 
         for (jr=0; jr<nc; jr+=NR ) {
           nr = min(nc-jr, NR); 
@@ -614,7 +616,7 @@ void dot_gemm( char orderA, char orderB, char orderC,
           }
         }
         	
-        //Acptr += kc_pack * mc_pack; 
+        Acptr += kc_pack * mc_pack; 
          	
       }
     }
