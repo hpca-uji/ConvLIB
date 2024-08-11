@@ -441,10 +441,15 @@ int main(int argc, char *argv[]) {
           transform_filter_block_blis(c, k, r, s, F,  ldF1,  ldF2,  ldF3, FB, 
 			              ldFB1, ldFB2, ldFB3, ldFB4, tformat, MR, NR);
 	else if (algorithm == LOWERING) {
+	  #ifdef A78AE
 	  if(gemm == SDOT_GEMM)
 	    prepack_dot_A( 'C', mm, kk, F, lda, Ac_blis, mc_blis, kc_blis, MR);
 	  else if(gemm == B3A2C0)
 	    prepack_saxpy_A( 'C', mm, kk, F, lda, Ac_blis, mc_blis, kc_blis, MR);
+          #else
+	  if(gemm == B3A2C0)
+	    prepack_saxpy_A( 'C', mm, kk, F, lda, Ac_blis, mc_blis, kc_blis, MR);
+          #endif
 	  prepackA = 1;
 	}
 	//------------------------------------------------------------------------
