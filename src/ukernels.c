@@ -17,14 +17,14 @@ void fselector(int MR, int NR, int algorithm, int gemm, UK_TYPE *uk_vec, UK_EDGE
     uk_intrinsic_selector_fp16(MR, NR, uk_vec, uk);
     *uk_edge = *uk;
   #elif Q_INT8_INT32
-    #ifdef A78AE
       if ((algorithm == LOWERING) && (gemm == SDOT_GEMM))
+        #ifdef A78AE
         *uk = uk_intrinsic_quantize_int8_4x16_sdot;
+        #else
+        *uk = uk_intrinsic_quantize_int8_2x8;
+        #endif
       else
         uk_intrinsic_selector_int8_int32(MR, NR, uk_vec, uk);
-    #else
-        uk_intrinsic_selector_int8_int32(MR, NR, uk_vec, uk);
-    #endif
     *uk_edge = *uk;
   #endif
 
@@ -381,6 +381,223 @@ void uk_intrinsic_quantize_int8_4x4_sdot(int kc, int8_t  *Ar, int8_t *Br, int32_
   vst1q_s32(&Crow(1, 0),  C10);  
   vst1q_s32(&Crow(2, 0),  C20);  
   vst1q_s32(&Crow(3, 0),  C30);  
+
+}
+
+#else
+
+void uk_intrinsic_quantize_int8_2x8(int kc, int8_t  *Ar, int8_t *Br, int32_t *Cr, int32_t beta, int ldC) {
+
+  nt i, j, k, baseA, baseB, Amr, Bnr;
+  int zero = 0, one = 1, *Aptr, *Bptr;
+
+  int8x8_t    A00,  A01, A10,  A11;
+  int8x8_t    B00,  B01, B10,  B11;
+
+  int16x8_t  _C00, _C01, C10, _C11;
+  
+  int32x4_t  C00, C01, C02, C03, C04, C05, C06, C07, 
+             C10, C11, C12, C13, C14, C15, C16, C17;
+
+
+  if ( kc==0 ) return;
+
+  C00 = vmovq_n_s32(0);
+  C01 = vmovq_n_s32(0);
+  C02 = vmovq_n_s32(0);
+  C03 = vmovq_n_s32(0);
+  C04 = vmovq_n_s32(0);
+  C05 = vmovq_n_s32(0);
+  C06 = vmovq_n_s32(0);
+  C07 = vmovq_n_s32(0);
+  
+  C10 = vmovq_n_s32(0);
+  C11 = vmovq_n_s32(0);
+  C12 = vmovq_n_s32(0);
+  C13 = vmovq_n_s32(0);
+  C14 = vmovq_n_s32(0);
+  C15 = vmovq_n_s32(0);
+  C16 = vmovq_n_s32(0);
+  C17 = vmovq_n_s32(0);
+
+  _C00 = vmovq_n_s16(0);
+  _C01 = vmovq_n_s16(0);
+  _C10 = vmovq_n_s16(0);
+  _C11 = vmovq_n_s16(0);
+
+
+  baseA = 0;
+  baseB = 0;
+
+
+  for ( k=0; k<kc; k+=16 ) {
+    //LOAD A
+    //ARow-0
+    A00 = vld1_s8(&Ar[baseA + 0]); //kc=8
+    A01 = vld1_s8(&Ar[baseA + 8]); //kc=16
+    //ARow-1
+    A10 = vld1_s8(&Ar[baseA + 16]); //kc=8
+    A11 = vld1_s8(&Ar[baseA + 24]); //kc=16
+
+    //---------------------------------------
+    //1st-Block (2 columns from B) 2x16
+    //---------------------------------------
+    //LOAD B
+    //Bcolumn-0
+    B00 = vld1_s8(&Br[baseB + 0]); //kc=8
+    B01 = vld1_s8(&Br[baseB + 8]); //kc=16
+    //BColumn-1
+    B10 = vld1_s8(&Br[baseB + 16]); //kc=8
+    B11 = vld1_s8(&Br[baseB + 24]); //kc=16
+
+    //Multiply kc=8
+    _C00 = vmull_s8(_C00, A00, B00);
+    _C10 = vmull_s8(_C01, A10, B00);
+    _C01 = vmull_s8(_C00, A00, B10);
+    _C11 = vmull_s8(_C01, A10, B10);
+    
+    //Multiply kc=16
+    _C00 = vmlal_s8(_C00, A01, B01);
+    _C10 = vmlal_s8(_C01, A11, B01);
+    _C01 = vmlal_s8(_C00, A01, B11);
+    _C11 = vmlal_s8(_C01, A11, B11);
+
+    //Reduction pairwise. From int8x8 to int32x4
+    C00 = vpadalq_s16(C00, _C00);
+    C01 = vpadalq_s16(C01, _C01);
+    C10 = vpadalq_s16(C10, _C10);
+    C11 = vpadalq_s16(C11, _C11);
+    //---------------------------------------
+
+    //---------------------------------------
+    //2nd-Block (2 columns from B) 2x16. Total a tile of 4x16
+    //---------------------------------------
+    //LOAD B
+    //Bcolumn-0
+    B00 = vld1_s8(&Br[baseB + 32]); //kc=8
+    B01 = vld1_s8(&Br[baseB + 40]); //kc=16
+    //BColumn-1
+    B10 = vld1_s8(&Br[baseB + 48]); //kc=8
+    B11 = vld1_s8(&Br[baseB + 56]); //kc=16
+
+    //Multiply kc=8
+    _C00 = vmull_s8(_C00, A00, B00);
+    _C10 = vmull_s8(_C01, A10, B00);
+    _C01 = vmull_s8(_C00, A00, B10);
+    _C11 = vmull_s8(_C01, A10, B10);
+    
+    //Multiply kc=16
+    _C00 = vmlal_s8(_C00, A01, B01);
+    _C10 = vmlal_s8(_C01, A11, B01);
+    _C01 = vmlal_s8(_C00, A01, B11);
+    _C11 = vmlal_s8(_C01, A11, B11);
+
+    //Reduction pairwise. From int8x8 to int32x4
+    C20 = vpadalq_s16(C20, _C00);
+    C21 = vpadalq_s16(C21, _C01);
+    C30 = vpadalq_s16(C30, _C10);
+    C31 = vpadalq_s16(C31, _C11);
+    //---------------------------------------
+
+    //---------------------------------------
+    //3th-Block (2 columns from B) 2x16. Total a tile of 6x16
+    //---------------------------------------
+    //LOAD B
+    //Bcolumn-0
+    B00 = vld1_s8(&Br[baseB + 64]); //kc=8
+    B01 = vld1_s8(&Br[baseB + 72]); //kc=16
+    //BColumn-1
+    B10 = vld1_s8(&Br[baseB + 80]); //kc=8
+    B11 = vld1_s8(&Br[baseB + 88]); //kc=16
+
+    //Multiply kc=8
+    _C00 = vmull_s8(_C00, A00, B00);
+    _C10 = vmull_s8(_C01, A10, B00);
+    _C01 = vmull_s8(_C00, A00, B10);
+    _C11 = vmull_s8(_C01, A10, B10);
+    
+    //Multiply kc=16
+    _C00 = vmlal_s8(_C00, A01, B01);
+    _C10 = vmlal_s8(_C01, A11, B01);
+    _C01 = vmlal_s8(_C00, A01, B11);
+    _C11 = vmlal_s8(_C01, A11, B11);
+
+    //Reduction pairwise. From int8x8 to int32x4
+    C40 = vpadalq_s16(C40, _C00);
+    C41 = vpadalq_s16(C41, _C01);
+    C50 = vpadalq_s16(C50, _C10);
+    C51 = vpadalq_s16(C51, _C11);
+    //---------------------------------------
+
+    //---------------------------------------
+    //4th-Block (2 columns from B) 2x16. Total a tile of 8x16. Last Block!!
+    //---------------------------------------
+    //LOAD B
+    //Bcolumn-0
+    B00 = vld1_s8(&Br[baseB + 96]); //kc=8
+    B01 = vld1_s8(&Br[baseB + 104]); //kc=16
+    //BColumn-1
+    B10 = vld1_s8(&Br[baseB + 112]); //kc=8
+    B11 = vld1_s8(&Br[baseB + 120]); //kc=16
+
+    //Multiply kc=8
+    _C00 = vmull_s8(_C00, A00, B00);
+    _C10 = vmull_s8(_C01, A10, B00);
+    _C01 = vmull_s8(_C00, A00, B10);
+    _C11 = vmull_s8(_C01, A10, B10);
+    
+    //Multiply kc=16
+    _C00 = vmlal_s8(_C00, A01, B01);
+    _C10 = vmlal_s8(_C01, A11, B01);
+    _C01 = vmlal_s8(_C00, A01, B11);
+    _C11 = vmlal_s8(_C01, A11, B11);
+
+    //Reduction pairwise. From int8x8 to int32x4
+    C60 = vpadalq_s16(C60, _C00);
+    C61 = vpadalq_s16(C61, _C01);
+    C70 = vpadalq_s16(C70, _C10);
+    C71 = vpadalq_s16(C71, _C11);
+    //---------------------------------------
+    
+    baseA = baseA + 32;
+    baseB = baseB + 128;
+
+  }
+
+  //Now, we need to make the last reduction.
+  //With this reduction, we can concatenate the reductions by rows
+  //Remember, C is stored by row-major
+  C00 = vpaddq_s32(C00, C01);
+  C02 = vpaddq_s32(C02, C03);
+  C04 = vpaddq_s32(C04, C05);
+  C06 = vpaddq_s32(C06, C07);
+  C10 = vpaddq_s32(C10, C11);
+  C12 = vpaddq_s32(C12, C13);
+  C14 = vpaddq_s32(C14, C15);
+  C16 = vpaddq_s32(C16, C17);
+
+  //Last reduction 
+  C00 = vpaddq_s32(C00, C02);
+  C04 = vpaddq_s32(C04, C06);
+  C10 = vpaddq_s32(C10, C12);
+  C14 = vpaddq_s32(C14, C16);
+
+  if (beta != zero) {
+    C01 = vld1q_s32(&Crow(0, 0));
+    C02 = vld1q_s32(&Crow(0, 4));
+    C11 = vld1q_s32(&Crow(1, 0));
+    C12 = vld1q_s32(&Crow(1, 4));
+
+    C00 = vaddq_s32(C00, C01);
+    C04 = vaddq_s32(C04, C02);
+    C10 = vaddq_s32(C10, C11);
+    C14 = vaddq_s32(C14, C12);
+  }
+
+  vst1q_s32(&Crow(0, 0),  C00);
+  vst1q_s32(&Crow(0, 4),  C04);
+  vst1q_s32(&Crow(1, 0),  C10);
+  vst1q_s32(&Crow(1, 4),  C14);
 
 }
 

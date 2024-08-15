@@ -442,13 +442,13 @@ int main(int argc, char *argv[]) {
                                 Ac_blis, Bc_blis, mc_blis, nc_blis, kc_blis, 
 				MR, NR, TH, testConf->LOOP, Ctmp, uk_vec, uk_edge_vec);
 	    } else if (gemm == SDOT_GEMM) {
+	      ldc = ho * wo * n;
 	      #ifdef A78AE
-	        ldc = ho * wo * n;
                 dot_gemm( 'C', 'C', 'R', mm, nn, kk, F, lda, DEXT, ldb, betap, Y, ldc,
 	                 Ac_blis, Bc_blis, mc_blis, nc_blis, kc_blis, MR, NR);
               #else
-		printf("SDOT GEMM Only supported for A78AE arch.\n");
-		exit(-1);
+                dot_gemm( 'C', 'C', 'R', mm, nn, kk, F, lda, DEXT, ldb, betap, Y, ldc,
+	                 Ac_blis, Bc_blis, mc_blis, nc_blis, kc_blis, MR, NR);
               #endif
 	    } else {
 	      printf("ERROR: Algorithm unsupported.\n"); exit(-1);
