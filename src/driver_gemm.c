@@ -47,8 +47,6 @@
 #include "modelLevel/model_level.h"
 #include "gemm/gemm_blis.h"
 
-#include "asm_generator/ukernels/gemm_ukernel_headers.h"
-
 #undef min
 
 #include "convGemm/convgemm_blis.h"
@@ -66,138 +64,7 @@
 
 
 #ifdef ENERGY_CONSUMPTION
-
-#include "pmlib.h"
-
-//Energy Consumption
-int pmblib_get_data(counter_t pm_counter,line_t lines, int set, double *measures, const int nmeasures) {
-
-/*! Print the structure data in a file in text format.
-  The lines and sets parameters define which data will be printed.
-  If parameter set is 0 all sets will be printed.
-  The format of the file is:
-  	Set_id <tab> Time <tab> Value_Line1 <tab> Value_Line2 <tab>... <tab> Value_aggregate
-
-*/
-
-  FILE    *file_data;
-  int	i, j, ii, s, init, last, m;
-  int	ini, fin, watts_size, interval;
-  double	time, inc_time, t, sum;
-  int	*ind_print, *ind_lines, n_lines_print, n_lines_counter;
-
-  int n_reads = 0;
-	
-  for (m=0; m <= nmeasures; m++)
-    measures[m] += 0.0; 
-
-  if ( pm_counter.aggregate ) {	//Only aggregate value will be printed
-    if (set > pm_counter.measures->energy.watts_sets_size-1 || set <-1)
-      return -1;
-
-    if (set == -1) {
-      init= 0;
-      last= pm_counter.measures->energy.watts_sets_size-1;
-    } else {
-      init= set;
-      last= set+1;
-    }
-
-    for( s= init; s < last; s++ ) {
-      ini=pm_counter.measures->energy.watts_sets[s];
-      fin=pm_counter.measures->energy.watts_sets[s+1];
-
-      watts_size=pm_counter.measures->energy.watts_size;
-      time=pm_counter.measures->timing[(s*2)+1]-pm_counter.measures->timing[s*2];
-      inc_time=time/(fin-ini-1);
-
-      t=0.0;
-      for(i=ini; i<fin; i++){
-        printf("%d\t%f\t%f\n", s, t, pm_counter.measures->energy.watts[i]);
-	t+=inc_time;
-      }
-    }
-  } else {	//If all lines will be printed
-    if (set > pm_counter.measures->energy.watts_sets_size-1 || set <-1)
-      return -1;
-	
-    line_t p_lines;
-    LINE_AND(&p_lines, lines, pm_counter.lines);
-    n_lines_counter= 0;
-    n_lines_print= 0;
-
-    for (i=0; i<__NLINEBITS && n_lines_print < pm_counter.measures->energy.lines_len; i++) {
-      if(LINE_ISSET( i, &p_lines ))          n_lines_print++;
-      if(LINE_ISSET( i, &pm_counter.lines )) n_lines_counter++;
-    }
-
-    ind_print=(int *)malloc( n_lines_print*sizeof(int));
-    ind_lines=(int *)malloc( n_lines_print*sizeof(int));
-
-    j= 0; ii= 0;
-    for (i=0; i<__NLINEBITS && j < pm_counter.measures->energy.lines_len; i++) {
-      if(LINE_ISSET( i, &p_lines ) && LINE_ISSET( i, &pm_counter.lines )) {
-        ind_print[ii]= j;
-	ind_lines[ii]= i;
-	ii++;
-	j++;
-      } else if(!LINE_ISSET( i, &p_lines ) && LINE_ISSET( i, &pm_counter.lines ))
-	j++;
-    }
-
-    interval=pm_counter.measures->energy.watts_sets[pm_counter.measures->energy.watts_sets_size-1]-pm_counter.measures->energy.watts_sets[0];
-
-    if (set == -1) {
-      init= 0;
-      last= pm_counter.measures->energy.watts_sets_size-1;
-    } else {
-      init= set;
-      last= set+1;
-    }
-
-    int offset = 0;
-    watts_size = pm_counter.measures->energy.watts_size;
-
-    for( s= init; s < last; s++ ) {
-      ini=pm_counter.measures->energy.watts_sets[s];
-      fin=pm_counter.measures->energy.watts_sets[s+1];
-
-      time=pm_counter.measures->timing[(s*2)+1]-pm_counter.measures->timing[s*2];
-      inc_time=time/(fin-ini-1);
-
-      interval = fin-ini;
-
-      t=0.0;
-      for(i=0; i<interval; i++) {
-        sum = 0.0;
-
-	for(j=0;j<n_lines_print;j++)
-	  sum+=pm_counter.measures->energy.watts[offset + ( i+interval*ind_print[j])];
-
-	for (m=0; m < nmeasures; m++)
-	  measures[m] += pm_counter.measures->energy.watts[offset + ( i+interval*ind_print[m])]; 
-
-	measures[nmeasures] += sum;
-
-	n_reads++;
-	t+=inc_time;
-      }
-
-      offset+= (n_lines_counter*interval);
-
-    }
-
-    free(ind_print);
-    free(ind_lines);
-  
-  }
-
-  for (m=0; m <= nmeasures; m++) 
-    measures[m] = measures[m] / (double)n_reads;
-
-  return(0);
-}
-
+  #include "energy.h"
 #endif
 
 
@@ -237,9 +104,9 @@ int main(int argc, char *argv[]) {
          ldF1,  ldF2,  ldF3,
          ldFB1, ldFB2, ldFB3, ldFB4,
          ldY1,  ldY2,  ldY3,
-         visual, nreps, ho, wo, homax, womax;
+         visual, nreps, ho, wo, homax, womax, prepackA;
   
-  int ib, i, i2, ii, Ci_Cib, Co_Cob, Co_Nr, Co_Mr;
+  int ib, i, i2, ii, ukn, Ci_Cib, Co_Cob, Co_Nr, Co_Mr;
   char *filename;
   FILE *fd;
   int cnn_test_num, cnn_i;
@@ -272,6 +139,10 @@ int main(int argc, char *argv[]) {
 
   int gemm;
   int format;
+
+  int uk_num;
+
+  prepackA = 0;
 
   fprintf(testConf->fd_csv, "Format;l;MC;NC;KC;M;N;K;n;k;c;ho;wo;kh;kw;Time;GFLOPS;Error;MR;NR;");    
 
@@ -307,18 +178,22 @@ int main(int argc, char *argv[]) {
   else                                     gemm = UNKNOWN;
   
   #if defined(NQ_FP32) || defined(FQ_FP32)
-    UK_TYPE      *uk_vec      = new_uk_asm_selector_fp32();
-    UK_EDGE_TYPE *uk_edge_vec = new_uk_asm_edge_selector_fp32();
+    UK_TYPE      *uk_vec      = new_uk_intrinsic_selector_fp32();
+    UK_EDGE_TYPE *uk_edge_vec = NULL;
+    UK_CONFIG    *uk_config   = new_uk_intrinsic_config_fp32();
   #elif defined(NQ_INT32) || defined(FQ_INT32)
     UK_TYPE      *uk_vec      = new_uk_intrinsic_selector_int32();
     UK_EDGE_TYPE *uk_edge_vec = NULL;
+    UK_CONFIG    *uk_config   = new_uk_intrinsic_config_int32();
   #elif FP16
     UK_TYPE      *uk_vec      = new_uk_intrinsic_selector_fp16();
     UK_EDGE_TYPE *uk_edge_vec = NULL;
+    UK_CONFIG    *uk_config   = new_uk_intrinsic_config_fp16();
   #elif Q_INT8_INT32
     UK_TYPE      *uk_vec      = new_uk_intrinsic_selector_int8_int32();
     //UK_TYPE      *uk_vec      = new_uk_intrinsic_selector_int8_int32_u8();
     UK_EDGE_TYPE *uk_edge_vec = NULL;
+    UK_CONFIG    *uk_config   = new_uk_intrinsic_config_int8_int32();
   #else
     printf("ERROR: Type unsupported\n");
     exit(-1);
@@ -390,7 +265,7 @@ int main(int argc, char *argv[]) {
   printf(" |%s                                                    DRIVER FOR GEMM EVALUATION                                                      %s|\n",
   COLOR_BOLDYELLOW, COLOR_RESET);
 
-  for (format=0; format < 2; format++) {
+  for (format=0; format < 1; format++) {
     if (format == 0) { //NHWC
       printf(" +====================================================================================================================================+\n");
       printf(" |%s                                                              NHWC                                                                  %s|\n", COLOR_BOLDYELLOW, COLOR_RESET);
@@ -434,6 +309,14 @@ int main(int argc, char *argv[]) {
         alpha = 1.0;
         beta  = 0.0;
   
+	//----------------------------------------------
+	//TODO: REMOVE ME!!!!!!! ONLY FOR DEBUG!!!!
+	//----------------------------------------------
+	//mm=2;
+	//nn=4;
+	//kk=32;
+	//----------------------------------------------
+
         ldA = mm;
         ldB = kk;
         ldC = mm;
@@ -449,50 +332,35 @@ int main(int argc, char *argv[]) {
         ldB = kk;
         ldC = mm;
       }
+
+
       //-------------------------------------------------
       //Iterate over MR-NR
       //-------------------------------------------------
-      mr_limit = testConf->MR;
-      nr_limit = testConf->NR;
-      mr_init  = testConf->MR;
-      nr_init  = testConf->NR;
   
-      if (testConf->bestof=='T') {
-        #if defined(NQ_FP32) || defined(FQ_FP32)
-          mr_limit = 20;
-          nr_limit = 20;
-          mr_init  = 4;
-          nr_init  = 4;
-        #elif FP16
-          mr_limit = 40;
-          nr_limit = 40;
-          mr_init  = 8;
-          nr_init  = 8;
-        #else
-          mr_limit = 24;
-          nr_limit = 24;
-          mr_init  = 8;
-          nr_init  = 4;
-        #endif
-        if (gemm == SDOT_GEMM) {
-          mr_limit = 4;
-          nr_limit = 16;
-          mr_init  = 4;
-          nr_init  = 16;
-        }
-      }
+      if (testConf->bestof=='T') uk_num = uk_config->uk_num;
+      else                       uk_num = 1;
+      
+      //if (gemm == SDOT_GEMM) {
+        //testConf->MR = 4;
+        //testConf->NR = 16;
+      //}
   
       best_error=0.0; best_flops=0.0; best_time = 0.0;
-  
-      for (mr_iter=mr_init; mr_iter < mr_limit + 1; mr_iter+=mr_init) {
-        for (nr_iter=nr_init; nr_iter < nr_limit + 1; nr_iter+=nr_init) {
-  
-          MR = mr_iter;
-          NR = nr_iter;
-  
-	  fselector(MR, NR, LOWERING, gemm, uk_vec, uk_edge_vec, &uk, &uk_edge);
+ 
+      for (ukn = 0; ukn < uk_num; ukn++) {
+
+      	if (testConf->bestof=='T') {    
+          MR = uk_config->mr_pool[ukn];
+          NR = uk_config->nr_pool[ukn];
+	} else {
+          MR = testConf->MR;
+          NR = testConf->NR;
+	}
+
+	fselector(MR, NR, LOWERING, gemm, uk_vec, uk_edge_vec, &uk, &uk_edge);
     
-	  if (uk == NULL) { continue; }
+	if (uk == NULL) { continue; }
 	  
           if (model_on) {
 	    if (gemm==A3B2C0)
@@ -523,6 +391,27 @@ int main(int argc, char *argv[]) {
 	  #elif defined(FQ_FP32) || defined(FQ_INT32) || defined(Q_INT8_INT32)
 	    generate_matrix_int8(COLUMN_MAJOR, mm, kk, A, ldA );
 	    generate_matrix_int8(COLUMN_MAJOR, kk, nn, B, ldB );
+
+	    //printf("A:\n");
+	    //for (int i=0; i < mm; i++) {
+	    //for (int j=0; j < kk; j++)
+	      //printf("%2d ", A[j*mm+i]);
+	    //printf("\n");
+	    //}
+	    //printf("\n");
+	    //printf("\n");
+
+
+	    //printf("B:\n");
+	    //for (int i=0; i < kk; i++){
+	    //for (int j=0; j < nn; j++)
+	      //printf("%2d ", B[j*kk +i]);
+	    //printf("\n");
+	    //}
+	    //printf("\n");
+	    //printf("\n");
+	    
+
           #else
 	    printf("ERROR: Data type model unsuported\n");
 	    exit(-1);
@@ -537,6 +426,19 @@ int main(int argc, char *argv[]) {
 	  //prepack_saxpy_A( 'C', mm, kk, F, lda, Ac_blis, mc_blis, kc_blis, MR);
 	  
 	  #ifdef ENERGY_CONSUMPTION
+	    //Warming up engines...
+            pm_start_counter(&counter);
+            time  = 0.0;
+            t1    = dclock();
+	    while ( time <= tmin ) { 
+	      for (int i=0; i < mm * nn; i++) { C[i]=0; Cg[i]=0; }
+	      t2 = dclock();
+              time = ( t2 > t1 ? t2 - t1 : 0.0 );
+	    }
+            pm_stop_counter(&counter);
+            pm_get_counter_data(&counter);
+
+	    //Start Counter
             pm_start_counter(&counter);
           #endif
 
@@ -562,21 +464,17 @@ int main(int argc, char *argv[]) {
               gemm_blis_B3A2C0( 'C', 'C', 'C', 'N', 'N', mm, nn, kk, 
                                 alpha, A, ldA, B, ldB, beta, C, ldC,
                                 Ac, Bc, mc_blis, nc_blis, kc_blis, 
-			        MR, NR, TH, testConf->LOOP, Ctmp, uk_vec, uk_edge_vec);
+			        MR, NR, TH, testConf->LOOP, Ctmp, uk_vec, 
+				uk_edge_vec, prepackA);
 	    } else if (gemm == A3B2C0) {
               gemm_blis_A3B2C0( 'C', 'C', 'C', 'N', 'N', mm, nn, kk, 
                                 alpha, A, ldA, B, ldB, beta, C, ldC,
                                 Ac, Bc, mc_blis, nc_blis, kc_blis, 
 			        MR, NR, TH, testConf->LOOP, Ctmp, uk_vec, uk_edge_vec);
 	    } else if (gemm == SDOT_GEMM) {
-	      #ifdef A78AE
-	        ldC = ho * wo * n;
+		ldC = nn;
                 dot_gemm( 'C', 'C', 'R', mm, nn, kk, A, ldA, B, ldB, beta, C, ldC,
 	                   Ac, Bc, mc_blis, nc_blis, kc_blis, MR, NR);
-              #else
-		printf("SDOT GEMM Only supported for A78AE arch.\n");
-		exit(-1);
-              #endif
 	    } else {
 	      printf("ERROR: Algorithm unsupported.\n"); exit(-1);
 	    }
@@ -586,34 +484,34 @@ int main(int argc, char *argv[]) {
             time = ( t2 > t1 ? t2 - t1 : 0.0 );
       
           }
-          time = time/nreps;
-  
-          if ( nreps == 0 ) continue; 
-	      
-          if ( testConf->test=='T' )
-            error = gemm_validation(COLUMN_MAJOR, NO_TRANSPOSE, NO_TRANSPOSE, A, B, mm, nn, kk, alpha, beta, ldA, ldB, ldC, C, Cg);
-          else
-            error = -1.0;
-  
-	  if (gemm==SDOT_GEMM)  { 
-            //C row-major, convert to col-major
-            //C_TYPE *Y_tmp = (C_TYPE *) malloc (sizeof(C_TYPE) * n * ho * wo * k);
-	    //convert_row2col(Y, Y_tmp, k, ho * wo * n);
-	    //free(Y);
-	    //Y = Y_tmp;
-	    printf("Not implemented\n"); exit(-1);
-	  }
-  
-              
-          flops = 2.0 * mm * nn * kk;
-          GFLOPS  = flops / (1.0e+9 * time );
-      
+
           #ifdef ENERGY_CONSUMPTION
             pm_stop_counter(&counter);
             pm_get_counter_data(&counter);
             pmblib_get_data(counter, lines, -1, measures, nmeasures);
           #endif
+          
+	  time = time/nreps;
   
+          if ( nreps == 0 ) continue; 
+	      
+          flops = 2.0 * mm * nn * kk;
+          GFLOPS  = flops / (1.0e+9 * time );
+  
+	  if (gemm==SDOT_GEMM)  { 
+            //C row-major, convert to col-major
+            C_TYPE *C_tmp = (C_TYPE *) malloc (sizeof(C_TYPE) * nn * mm);
+	    convert_row2col(C, C_tmp, mm, nn);
+	    free(C);
+	    C = C_tmp;
+	    ldC=mm;
+	  }
+  
+          if ( testConf->test=='T' )
+            error = gemm_validation(COLUMN_MAJOR, NO_TRANSPOSE, NO_TRANSPOSE, A, B, mm, nn, kk, alpha, beta, ldA, ldB, ldC, C, Cg);
+          else
+            error = -1.0;
+              
           if ((gemm == BLIS) || (gemm == OPENBLAS))
             printf(" | -    -  |   -         -        -    | %3d %5d %5d %5d %5d   (%1d,%1d)  | %s%-10.2e%s %-8.1e %8.1e |", n, k, c, ho, wo, r, s, COLOR_BOLDCYAN, GFLOPS, COLOR_RESET, time, error);
 	  else
@@ -655,8 +553,6 @@ int main(int argc, char *argv[]) {
           free(Cg);
       
         }
-      }
-
 
 
       if (testConf->bestof=='T') {

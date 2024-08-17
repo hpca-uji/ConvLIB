@@ -62,6 +62,7 @@ void load_model_level_params(char *config_file, int *params) {
 
 }
 
+/*
 int model_level(int isL3, int NL, int CL, int WL, int dataSize, int m, int n) { 
 
   
@@ -93,18 +94,41 @@ int model_level(int isL3, int NL, int CL, int WL, int dataSize, int m, int n) {
    return k;
 
 }
+*/
+
+int model_level(int NL, int CL, int WL, int dataSize, int m, int n) {
+  int k, CAr, CBr;
+
+  if (WL==2)
+    k = NL * CL / (2.0 * m * dataSize);
+  else {
+     CAr = floor( ( (float)WL - 1.0 ) / (1.0 + (float)n / (float)m) ); //Lines of each set for Ar 
+     if (CAr==0) { // Special case
+       CAr = 1.0;
+       CBr = WL - 2;
+       //k = CBr * NL * CL / (n * dataSize);
+     } else {
+       CBr = ceil( ( (float)n / (float)m ) * (float)CAr ); //Lines of each set for Br
+       //k = CAr * NL * CL / (m * dataSize);
+     }
+     k = CBr * NL * CL / (n * dataSize);
+  }
+
+   return k;
+}
+
 
 void get_optim_mc_nc_kc(int dataSize, int m, int n, int k, int mr, int nr, int *mc, int *nc, int *kc, int *params) {
 
   //NL1, CL1, WL1
-  *kc = model_level(0, params[2], params[3], params[4], dataSize, mr, nr); 
+  *kc = model_level(params[2], params[3], params[4], dataSize, mr, nr); 
   *kc = min(k, *kc);
   
-  *mc = model_level(0, params[7], params[8], params[9], dataSize, *kc, nr); 
+  *mc = model_level(params[7], params[8], params[9], dataSize, *kc, nr); 
   *mc = min(m, *mc);
   *mc = ceil((float)*mc / (float)mr) * mr;
   
-  *nc = model_level(1, params[12], params[13], params[14], dataSize, *kc, *mc); 
+  *nc = model_level(params[12], params[13], params[14], dataSize, *kc, *mc); 
   *nc = min(n, *nc);
   *nc = ceil((float)*nc / (float)nr) * nr;
   

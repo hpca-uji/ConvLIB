@@ -1,0 +1,21 @@
+
+
+sed -i '/DTYPE/c\DTYPE = FQ_INT32' Makefile.inc
+make clean;
+make && ./convolution.bin cnn/Resnet50-imagenet out_convdirect/FQ_INT32.csv
+
+
+sed -i '/DTYPE/c\DTYPE = FQ_FP32' Makefile.inc
+make clean;
+make && ./convolution.bin cnn/Resnet50-imagenet out_convdirect/FQ_FP32.csv
+
+
+sed -i '/DTYPE/c\DTYPE = NQ_INT32' Makefile.inc
+make clean;
+make && ./convolution.bin cnn/Resnet50-imagenet out_convdirect/NQ_INT32.csv
+
+
+sed -i '/DTYPE/c\DTYPE = NQ_FP32' Makefile.inc
+make clean;
+make && ./convolution.bin cnn/Resnet50-imagenet out_convdirect/NQ_FP32.csv
+

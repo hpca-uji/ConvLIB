@@ -70,18 +70,16 @@ if [ "$ALGORITHM" = "LOWERING" ] && [ "$GEMM" = "BLIS" ]; then
   BESTOF=F
 fi
 
-if [ "$ALGORITHM" = "WINOGRAD" ] ; then
-  echo " WARNING: WINOGRAD Enable. BESTOF Option not available. Disabled automaticaly."
+if [ "$GEMM" = "SDOT_GEMM" ] ; then
+  echo " WARNING: With SDOT gemm, BESTOF option is disabled automaticaly."
   BESTOF=F
-  MR=4
-  NR=4
 fi
 
 sys_arch=$(uname -p)
 if [ "$sys_arch" = "aarch64" ]; then
   taskset -c $cpus ./build/convolution_driver.x "cnn" $CONFIGFILE $TMIN $TEST $DEBUG $OUTCSV $MR $NR $THREADS $ALGORITHM $GEMM $BESTOF "cache-arch/"$PLATFORM $MC $NC $KC $PARALLEL_LOOP
 else
-  qemu-riscv64 -cpu c906fdv ./build/convolution_driver.x "cnn" $CONFIGFILE $TMIN $TEST $DEBUG $OUTCSV $MR $NR $THREADS $ALGORITHM $GEMM $BESTOF "cache-arch/"$PLATFORM $MC $NC $KC $PARALLEL_LOOP
+  ./build/convolution_driver.x "cnn" $CONFIGFILE $TMIN $TEST $DEBUG $OUTCSV $MR $NR $THREADS $ALGORITHM $GEMM $BESTOF "cache-arch/"$PLATFORM $MC $NC $KC $PARALLEL_LOOP
 fi
 
 
