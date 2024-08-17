@@ -9,6 +9,7 @@
 //Micro-kernels selector
 void fselector(int MR, int NR, int algorithm, int gemm, UK_TYPE *uk_vec, UK_EDGE_TYPE *uk_edge_vec, UK_TYPE *uk, UK_EDGE_TYPE *uk_edge) {
 
+  *uk = NULL;
   #if defined(NQ_FP32) || defined(FQ_FP32)
     uk_intrinsic_selector_fp32(MR, NR, uk_vec, uk);
     *uk_edge = *uk;
@@ -142,7 +143,7 @@ void ukernel_intrinsic_16x8_A78_fp16(int kc, float16_t *Ar, float16_t *Br, float
 
 
 //Generic micro-kernel for Lowering+GEMM based on DOT Products.
-void uk_int8_4x16_sdot(int mr, int nr, uint32_t kc, int8_t *A, int8_t *B, int32_t *C, uint32_t kc, int32_t beta, uint32_t ldC) {
+void uk_int8_4x16_sdot(int mr, int nr, int32_t kc, int8_t *A, int8_t *B, int32_t *C, int32_t beta, int32_t ldC) {
 
   //WARNING: C stored by rows!
   #if defined(Q_INT8_INT32)

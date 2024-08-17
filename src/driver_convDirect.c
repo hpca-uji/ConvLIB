@@ -192,6 +192,20 @@ int main(int argc, char *argv[]) {
     UK_TYPE      *uk_vec      = new_uk_intrinsic_selector_int8_int32();
     UK_EDGE_TYPE *uk_edge_vec = NULL;
     UK_CONFIG    *uk_config   = new_uk_intrinsic_config_int8_int32();
+
+    //Special micro-kernels for dot products
+    if ((algorithm == LOWERING) && (gemm == SDOT_GEMM)) {
+      uk_config->uk_num = 0;
+      #ifdef A78AE
+        uk_config->mr_pool[uk_config->uk_num] = 4;
+        uk_config->nr_pool[uk_config->uk_num] = 16;
+        uk_config->uk_num++;
+      #else
+        uk_config->mr_pool[uk_config->uk_num] = 2;
+        uk_config->nr_pool[uk_config->uk_num] = 8;
+        uk_config->uk_num++;
+      #endif
+    }
   #else
     printf("ERROR: Type unsupported\n");
     exit(-1);
@@ -302,10 +316,6 @@ int main(int argc, char *argv[]) {
     if (testConf->bestof=='T') uk_num = uk_config->uk_num;
     else                       uk_num = 1;
 
-    //if (gemm == SDOT_GEMM) {
-      //testConf->MR = 4;
-      //testConf->NR = 16;
-    //}
 
     best_error=0.0; best_flops=0.0; best_time = 0.0;
 
@@ -317,15 +327,21 @@ int main(int argc, char *argv[]) {
       } else {
         MR = testConf->MR;
         NR = testConf->NR;
+
+        int exist=0;
+
+        if (algorithm == CONVDIRECT) {
+          for (int ik = 0; ik < uk_config->uk_num; ik++)  
+	    if ((uk_config->mr_pool[ik] == NR) && (uk_config->nr_pool[ik] == MR)) { exist=1; break; }
+	} else {
+          for (int ik = 0; ik < uk_config->uk_num; ik++) 
+	    if ((uk_config->mr_pool[ik] == MR) && (uk_config->nr_pool[ik] == NR)) { exist=1; break; }
+	}
+
+        if (!exist) { printf("\n  Micro-kernel %d x %d size unsuported\n", MR, NR); exit(-1); }
+
       }
-
-      if (algorithm == CONVDIRECT)
-        fselector(NR, MR, LOWERING, gemm, uk_vec, uk_edge_vec, &uk, &uk_edge);
-      else
-        fselector(MR, NR, LOWERING, gemm, uk_vec, uk_edge_vec, &uk, &uk_edge);
-
-      if (uk == NULL) continue;
-	
+      
       if ((algorithm==LOWERING) || (algorithm==CONVGEMM)) {
         if (model_on) {
 	  if (gemm==A3B2C0)
